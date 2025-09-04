@@ -404,6 +404,11 @@ export default {
     return res.data;
   },
 
+  getTTSStatus: async () => {
+    const res = await axiosInstance.get(`${API}/tts/status`);
+    return res.data;
+  },
+
   // Admin functions (with authentication)
   getAdminSettings: async () => {
     const res = await axiosInstance.get(`${BASE_URL}/api/admin/settings`);

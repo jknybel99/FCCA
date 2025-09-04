@@ -31,9 +31,11 @@ export default function TTSManager() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [audioUrl, setAudioUrl] = useState(null);
   const [error, setError] = useState(null);
+  const [ttsStatus, setTtsStatus] = useState(null);
 
   useEffect(() => {
     loadAvailableVoices();
+    loadTTSStatus();
   }, []);
 
   const loadAvailableVoices = async () => {
@@ -43,6 +45,15 @@ export default function TTSManager() {
     } catch (error) {
       console.error('Error loading voices:', error);
       setError('Failed to load available voices');
+    }
+  };
+
+  const loadTTSStatus = async () => {
+    try {
+      const status = await api.getTTSStatus();
+      setTtsStatus(status);
+    } catch (error) {
+      console.error('Error loading TTS status:', error);
     }
   };
 
@@ -197,6 +208,78 @@ export default function TTSManager() {
           </Box>
         </CardContent>
       </Card>
+
+      {ttsStatus && (
+        <Card sx={{ mt: 3 }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              TTS System Status
+            </Typography>
+            
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Chip 
+                  label={ttsStatus.mock_mode ? "Mock Mode" : "Live Mode"} 
+                  color={ttsStatus.mock_mode ? "warning" : "success"}
+                  variant="outlined"
+                />
+                {ttsStatus.mock_mode && (
+                  <Typography variant="body2" color="text.secondary">
+                    Generating test audio files for development
+                  </Typography>
+                )}
+              </Box>
+
+              <Box>
+                <Typography variant="subtitle2" gutterBottom>
+                  Piper TTS Status:
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                  <Chip 
+                    label={`Executable: ${ttsStatus.piper_executable.exists ? 'Found' : 'Missing'}`}
+                    color={ttsStatus.piper_executable.exists ? "success" : "error"}
+                    size="small"
+                  />
+                  <Chip 
+                    label={`Executable: ${ttsStatus.piper_executable.executable ? 'Yes' : 'No'}`}
+                    color={ttsStatus.piper_executable.executable ? "success" : "warning"}
+                    size="small"
+                  />
+                </Box>
+              </Box>
+
+              <Box>
+                <Typography variant="subtitle2" gutterBottom>
+                  Voice Files:
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                  {Object.entries(ttsStatus.voices).map(([lang, voice]) => (
+                    <Chip
+                      key={lang}
+                      label={`${voice.name}: ${voice.exists ? 'OK' : 'Missing'}`}
+                      color={voice.exists ? "success" : "error"}
+                      size="small"
+                      variant="outlined"
+                    />
+                  ))}
+                </Box>
+              </Box>
+
+              <Box>
+                <Typography variant="subtitle2" gutterBottom>
+                  Output Directory: {ttsStatus.output_directory}
+                </Typography>
+              </Box>
+
+              {ttsStatus.note && (
+                <Alert severity="info" sx={{ mt: 1 }}>
+                  {ttsStatus.note}
+                </Alert>
+              )}
+            </Box>
+          </CardContent>
+        </Card>
+      )}
     </Box>
   );
 }

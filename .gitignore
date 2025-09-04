@@ -43,6 +43,10 @@ static/sounds/*.wav
 static/sounds/*.aac
 !static/sounds/sample_*
 
+# Large model files
+backend/piper/*.onnx
+backend/piper/models/
+
 # Backup files
 backups/*.zip
 !backups/README.md

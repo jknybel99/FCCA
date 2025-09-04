@@ -149,7 +149,7 @@ function App() {
               />
             )}
             <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-              {adminSettings.schoolName || 'School Bell System'}
+              {adminSettings.schoolName ? `${adminSettings.schoolName} - School Bell System` : 'School Bell System'}
             </Typography>
           </Toolbar>
         </AppBar>

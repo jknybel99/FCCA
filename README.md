@@ -159,6 +159,12 @@ If you experience problems with the TTS Manager:
 2. Check system logs for error messages
 3. Ensure your system meets the CPU requirements for Piper TTS
 
+### **TTS Configuration**
+- **Mock Mode**: Set `MOCK_TTS_MODE = True` in `backend/api/tts.py` (default)
+- **Real Mode**: Set `MOCK_TTS_MODE = False` for full Piper TTS functionality
+- **Voice Models**: Ensure `.onnx` files exist in `backend/piper/` directory
+- **File Permissions**: Verify Piper executable has proper permissions
+
 ### **Authentication Issues**
 1. Ensure the backend is running on port 8000
 2. Check database contains the users table

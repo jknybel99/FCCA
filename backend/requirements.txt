@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+sqlalchemy
+pydantic
+python-multipart
+aiofiles
+apscheduler
+jinja2
+piper-tts
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+pydub
+ntplib

@@ -46,16 +46,14 @@ async def startup_event():
     # Initialize database
     db = SessionLocal()
     try:
-        # Create default admin user if none exists
-        admin_users = db.query(models.AdminUser).count()
-        if admin_users == 0:
-            logger.info("Creating default admin user...")
-            crud.create_admin_user(db, schemas.AdminUserCreate(
-                username="admin",
-                password="admin123",
-                is_active=True
-            ))
-            logger.info("Default admin user created: username=admin, password=admin123")
+        # Set default school settings if none exist
+        school_name = crud.get_system_setting(db, "school_name")
+        if not school_name:
+            logger.info("Setting default school settings...")
+            crud.set_system_setting(db, "school_name", "FCCA School", "School name")
+            crud.set_system_setting(db, "school_logo", "/static/uploads/logo_20250901_161403_fcca.png", "School logo path")
+            crud.set_system_setting(db, "footer_text", "FCCA School Bell System - Automated Bell Scheduling", "Footer text")
+            logger.info("Default school settings created")
         
         # Create default schedule if none exists
         schedules = db.query(models.Schedule).count()
@@ -78,9 +76,9 @@ async def startup_event():
             logger.info("Default schedule created")
         
         # Set default system settings
-        crud.set_system_setting(db, "system_name", "School Bell System", "Name of the bell system")
-        crud.set_system_setting(db, "volume", "100", "System volume (0-100)")
-        crud.set_system_setting(db, "timezone", "UTC", "System timezone")
+        crud.set_system_setting(db, "system_timezone", "America/Chicago", "System timezone")
+        crud.set_system_setting(db, "auto_backup", "True", "Enable automatic backups")
+        crud.set_system_setting(db, "backup_frequency", "daily", "Backup frequency")
         
     except Exception as e:
         logger.error(f"Error during startup: {e}")

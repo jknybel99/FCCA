@@ -91,7 +91,7 @@ A comprehensive school bell scheduling system with automated scheduling, audio m
 - **Node.js**: 16+
 - **Database**: SQLite (included)
 - **OS**: Linux, Windows, macOS
-- **CPU**: For TTS functionality, AVX2/AVX-512 support recommended (Intel Haswell+ or equivalent)
+- **CPU**: Piper TTS requires AVX2/AVX-512 support (Intel Haswell+ or equivalent)
 
 ## 🔐 **Authentication & Access Control**
 
@@ -127,9 +127,8 @@ A comprehensive school bell scheduling system with automated scheduling, audio m
 - Preview functionality
 
 ### **TTS Manager** (Admin Only)
-- Text-to-speech generation
-- **Note**: Requires CPU with AVX2/AVX-512 support for optimal performance
-- Fallback options available for older CPUs
+- Text-to-speech generation using Piper TTS
+- Voice customization and audio file export
 
 ### **User Management** (Admin Only)
 - Create and manage user accounts
@@ -149,16 +148,16 @@ A comprehensive school bell scheduling system with automated scheduling, audio m
 - **Audio Files**: Supported formats: MP3, WAV, AAC
 - **Database**: SQLite database is automatically created
 - **Ports**: Backend runs on port 8000, Frontend on port 3000
-- **TTS Compatibility**: Piper TTS requires modern CPU instructions (AVX2/AVX-512). Older CPUs may experience compatibility issues.
+- **TTS Requirements**: Piper TTS requires AVX2/AVX-512 CPU instructions for optimal performance
 - **Authentication**: Default admin account should be changed after first login for security
 
 ## 🔧 **Troubleshooting**
 
 ### **TTS Issues**
 If you experience problems with the TTS Manager:
-1. Check your CPU supports AVX2/AVX-512 instructions
-2. Verify Piper TTS files are properly installed
-3. Check system logs for error messages
+1. Verify Piper TTS files are properly installed
+2. Check system logs for error messages
+3. Ensure your system meets the CPU requirements for Piper TTS
 
 ### **Authentication Issues**
 1. Ensure the backend is running on port 8000

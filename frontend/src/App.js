@@ -22,6 +22,10 @@ import TTSManager from "./components/TTSManager";
 import AdminPanel from "./components/AdminPanel";
 import ScheduleDialog from "./components/ScheduleDialog";
 import ScheduleTable from "./components/ScheduleTable";
+import Login from "./components/Login";
+import ProtectedRoute from "./components/ProtectedRoute";
+import UserProfile from "./components/UserProfile";
+import { useAuth, AuthProvider } from "./contexts/AuthContext";
 import api from "./api";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
@@ -52,7 +56,8 @@ const theme = createTheme({
   },
 });
 
-function App() {
+function AppContent() {
+  const { user, isAuthenticated, logout, isAdmin, loading } = useAuth();
   const [audioFiles, setAudioFiles] = useState([]);
   const [scheduledEvents, setScheduledEvents] = useState([]);
   const [previewUrl, setPreviewUrl] = useState(null);
@@ -71,10 +76,18 @@ function App() {
   const refreshSchedules = () => api.getBellEvents().then(setScheduledEvents);
 
   useEffect(() => {
-    refreshAudio();
-    refreshSchedules();
-    loadAdminSettings();
-  }, []);
+    if (isAuthenticated()) {
+      refreshAudio();
+      refreshSchedules();
+      loadAdminSettings();
+    }
+  }, [isAuthenticated]);
+
+  // Show login if not authenticated
+  if (!isAuthenticated()) {
+    return <Login />;
+  }
+
 
   const loadAdminSettings = async () => {
     try {
@@ -111,21 +124,43 @@ function App() {
   };
 
   const renderTabContent = () => {
-    switch (currentTab) {
-      case 0:
-        return <Dashboard key={scheduleRefreshKey} />;
-      case 1:
-        return <ScheduleManager />;
-      case 2:
-        return <CalendarView events={scheduledEvents} onPreview={handlePreview} onScheduleChange={handleScheduleChange} />;
-      case 3:
-        return <AudioLibrary onPreview={handlePreview} />;
-      case 4:
-        return <TTSManager />;
-      case 5:
-        return <AdminPanel onSettingsUpdate={loadAdminSettings} />;
-      default:
-        return <Dashboard />;
+    // For admin users, use the current tab directly
+    // For non-admin users, only allow tabs 0, 1, 2 (Dashboard, Calendar, My Profile)
+    if (!isAdmin() && currentTab > 2) {
+      setCurrentTab(2); // Redirect to My Profile (last accessible tab)
+      return <UserProfile />;
+    }
+
+    if (isAdmin()) {
+      // Admin users have all tabs
+      switch (currentTab) {
+        case 0:
+          return <Dashboard key={scheduleRefreshKey} />;
+        case 1:
+          return <ScheduleManager />;
+        case 2:
+          return <CalendarView events={scheduledEvents} onPreview={handlePreview} onScheduleChange={handleScheduleChange} />;
+        case 3:
+          return <AudioLibrary onPreview={handlePreview} />;
+        case 4:
+          return <TTSManager />;
+        case 5:
+          return <AdminPanel onSettingsUpdate={loadAdminSettings} />;
+        default:
+          return <Dashboard />;
+      }
+    } else {
+      // Regular users have limited tabs
+      switch (currentTab) {
+        case 0:
+          return <Dashboard key={scheduleRefreshKey} />;
+        case 1:
+          return <CalendarView events={scheduledEvents} onPreview={handlePreview} onScheduleChange={handleScheduleChange} />;
+        case 2:
+          return <UserProfile />;
+        default:
+          return <Dashboard />;
+      }
     }
   };
 
@@ -151,6 +186,21 @@ function App() {
             <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
               {adminSettings.schoolName ? `${adminSettings.schoolName} - School Bell System` : 'School Bell System'}
             </Typography>
+            
+            {/* User info and logout */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Typography variant="body2" sx={{ color: 'white' }}>
+                {user?.username} {user?.is_admin ? '(Admin)' : '(User)'}
+              </Typography>
+              <Button 
+                color="inherit" 
+                onClick={logout}
+                variant="outlined"
+                size="small"
+              >
+                Logout
+              </Button>
+            </Box>
           </Toolbar>
         </AppBar>
 
@@ -158,15 +208,18 @@ function App() {
           <Paper sx={{ mb: 3 }}>
             <Tabs value={currentTab} onChange={handleTabChange} centered>
               <Tab label="Dashboard" />
-              <Tab label="Schedule Manager" />
+              {isAdmin() && <Tab label="Schedule Manager" />}
               <Tab label="Calendar" />
-              <Tab label="Audio Library" />
-              <Tab label="TTS Manager" />
-              <Tab label="Admin Panel" />
+              {!isAdmin() && <Tab label="My Profile" />}
+              {isAdmin() && <Tab label="Audio Library" />}
+              {isAdmin() && <Tab label="TTS Manager" />}
+              {isAdmin() && <Tab label="Admin Panel" />}
             </Tabs>
           </Paper>
           
-          {renderTabContent()}
+          <ProtectedRoute>
+            {renderTabContent()}
+          </ProtectedRoute>
 
           {/* Footer */}
           <Box sx={{ mt: 6, py: 3, textAlign: 'center', color: 'text.secondary' }}>
@@ -202,6 +255,14 @@ function App() {
         />
       </LocalizationProvider>
     </ThemeProvider>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
 

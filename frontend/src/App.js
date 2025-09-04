@@ -135,8 +135,21 @@ function App() {
         <CssBaseline />
         <AppBar position="static">
           <Toolbar>
+            {adminSettings.schoolLogo && (
+              <Box
+                component="img"
+                src={adminSettings.schoolLogo}
+                alt="School Logo"
+                sx={{
+                  height: 40,
+                  width: 'auto',
+                  mr: 2,
+                  borderRadius: 1
+                }}
+              />
+            )}
             <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-              School Bell System
+              {adminSettings.schoolName || 'School Bell System'}
             </Typography>
           </Toolbar>
         </AppBar>

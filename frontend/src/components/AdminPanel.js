@@ -34,6 +34,7 @@ import {
 } from '@mui/icons-material';
 import api from '../api';
 import AudioControls from './AudioControls';
+import UserManagement from './UserManagement';
 
 export default function AdminPanel({ onSettingsUpdate }) {
   const [settings, setSettings] = useState({
@@ -512,31 +513,9 @@ export default function AdminPanel({ onSettingsUpdate }) {
           </Card>
         </Grid>
 
-        {/* Security Settings */}
+        {/* Security & Access */}
         <Grid item xs={12}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                <SecurityIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-                Security & Access
-              </Typography>
-              
-              <Grid container spacing={2}>
-                <Grid item xs={12} md={6}>
-                  <Typography variant="subtitle1" gutterBottom>
-                    Admin Access
-                  </Typography>
-                  <Button variant="outlined" sx={{ mr: 1 }}>
-                    Change Admin Password
-                  </Button>
-                  <Button variant="outlined">
-                    Manage Users
-                  </Button>
-                </Grid>
-                
-              </Grid>
-            </CardContent>
-          </Card>
+          <UserManagement />
         </Grid>
 
         {/* Backup Management */}

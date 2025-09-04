@@ -773,3 +773,76 @@ def get_scheduled_dates_for_calendar(db: Session, start_date: Optional[date] = N
             }
     
     return result
+
+# User operations
+def create_user(db: Session, user: schemas.UserCreate):
+    """Create a new user."""
+    from auth.utils import get_password_hash
+    
+    hashed_password = get_password_hash(user.password)
+    db_user = models.User(
+        username=user.username,
+        email=user.email,
+        hashed_password=hashed_password,
+        is_active=user.is_active,
+        is_admin=user.is_admin
+    )
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
+def get_user_by_username(db: Session, username: str):
+    """Get user by username."""
+    return db.query(models.User).filter(models.User.username == username).first()
+
+def get_user_by_email(db: Session, email: str):
+    """Get user by email."""
+    return db.query(models.User).filter(models.User.email == email).first()
+
+def get_user(db: Session, user_id: int):
+    """Get user by ID."""
+    return db.query(models.User).filter(models.User.id == user_id).first()
+
+def get_users(db: Session, skip: int = 0, limit: int = 100):
+    """Get all users."""
+    return db.query(models.User).offset(skip).limit(limit).all()
+
+def authenticate_user(db: Session, username: str, password: str):
+    """Authenticate a user."""
+    from auth.utils import verify_password
+    
+    user = get_user_by_username(db, username)
+    if not user:
+        return False
+    if not verify_password(password, user.hashed_password):
+        return False
+    return user
+
+def update_user(db: Session, user_id: int, user_update: schemas.UserUpdate):
+    """Update a user."""
+    user = get_user(db, user_id)
+    if not user:
+        return None
+    
+    update_data = user_update.dict(exclude_unset=True)
+    
+    # Hash password if it's being updated
+    if 'password' in update_data:
+        from auth.utils import get_password_hash
+        update_data['hashed_password'] = get_password_hash(update_data.pop('password'))
+    
+    for field, value in update_data.items():
+        setattr(user, field, value)
+    
+    db.commit()
+    db.refresh(user)
+    return user
+
+def delete_user(db: Session, user_id: int):
+    """Delete a user."""
+    user = get_user(db, user_id)
+    if user:
+        db.delete(user)
+        db.commit()
+    return user

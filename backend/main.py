@@ -7,6 +7,7 @@ from datetime import datetime
 
 from api import schedule, sound, tts, admin, audio
 from api import audio_editor
+from api import auth
 from services.scheduler import bell_scheduler
 from database import SessionLocal
 import crud, models, schemas
@@ -31,6 +32,7 @@ app.include_router(tts.router, prefix="/api/tts", tags=["TTS"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 app.include_router(audio.router, prefix="/api/audio", tags=["Audio"])
 app.include_router(audio_editor.router, prefix="/api/audio-editor", tags=["Audio Editor"])
+app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 
 # Make sure this path matches where your files are actually saved!
 os.makedirs("./static/sounds", exist_ok=True)

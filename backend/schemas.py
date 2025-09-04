@@ -243,3 +243,39 @@ class NextEvent(BaseModel):
     scheduled_date: Optional[str] = None
     days_from_now: Optional[int] = None
     minutes_until: int
+
+# Authentication schemas
+class UserBase(BaseModel):
+    username: str
+    email: str
+    is_active: bool = True
+    is_admin: bool = False
+
+class UserCreate(UserBase):
+    password: str
+
+class UserUpdate(BaseModel):
+    username: Optional[str] = None
+    email: Optional[str] = None
+    password: Optional[str] = None
+    is_active: Optional[bool] = None
+    is_admin: Optional[bool] = None
+
+class User(UserBase):
+    id: int
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+class UserLogin(BaseModel):
+    username: str
+    password: str
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    username: Optional[str] = None

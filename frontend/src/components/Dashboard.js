@@ -45,6 +45,7 @@ const Dashboard = () => {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [volume, setVolume] = useState(100);
   const [audioSettings, setAudioSettings] = useState(null);
+  const [audioOutputs, setAudioOutputs] = useState([]);
   const [activeSchedule, setActiveSchedule] = useState(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
   const [isTestingSound, setIsTestingSound] = useState(false);
@@ -70,6 +71,7 @@ const Dashboard = () => {
     fetchNextEvent();
     fetchSystemStatus();
     fetchAudioSettings();
+    fetchAudioOutputs();
     fetchActiveSchedule();
     fetchNtpStatus();
     fetchBackupStatus();
@@ -127,6 +129,24 @@ const Dashboard = () => {
     } catch (error) {
       console.error('Error fetching audio settings:', error);
     }
+  };
+
+  const fetchAudioOutputs = async () => {
+    try {
+      const outputs = await api.getAudioOutputs();
+      setAudioOutputs(outputs);
+    } catch (error) {
+      console.error('Error fetching audio outputs:', error);
+    }
+  };
+
+  const getDeviceName = (deviceId) => {
+    if (!deviceId || deviceId === 'default') {
+      return 'Default';
+    }
+    
+    const device = audioOutputs.find(output => output.id === deviceId);
+    return device ? device.name : deviceId;
   };
 
   const fetchActiveSchedule = async () => {
@@ -496,7 +516,7 @@ const Dashboard = () => {
               </Box>
               {audioSettings && (
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                  Output: {audioSettings.output || 'Default'}
+                  Output: {getDeviceName(audioSettings.output)}
                 </Typography>
               )}
 

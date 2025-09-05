@@ -29,8 +29,16 @@ class BellScheduler:
         """Start the scheduler"""
         if not self.is_running:
             self.is_running = True
+            logger.info("Starting bell scheduler...")
             self._schedule_all_events()
             self._schedule_ntp_sync()
+            
+            # List all scheduled jobs
+            jobs = self.scheduler.get_jobs()
+            logger.info(f"Bell scheduler started with {len(jobs)} jobs")
+            for job in jobs:
+                logger.info(f"Job: {job.id} - Next run: {job.next_run_time}")
+            
             logger.info("Bell scheduler started")
     
     def stop(self):
@@ -121,6 +129,13 @@ class BellScheduler:
         
         self.current_jobs[job_id] = event.id
         logger.info(f"Scheduled event {event.id} for {event.time} on day {day_of_week}")
+        logger.info(f"Job ID: {job_id}, Trigger: {trigger}")
+        
+        # List all scheduled jobs for debugging
+        jobs = self.scheduler.get_jobs()
+        logger.info(f"Total scheduled jobs: {len(jobs)}")
+        for job in jobs:
+            logger.info(f"Job: {job.id} - {job.name} - Next run: {job.next_run_time}")
     
     def _schedule_special_events(self):
         """Schedule special events for specific dates"""
@@ -200,28 +215,37 @@ class BellScheduler:
     
     def _trigger_event(self, event_id):
         """Trigger an audio event"""
+        logger.info(f"=== SCHEDULER TRIGGER EVENT CALLED: {event_id} ===")
         db = self._get_db()
         try:
             event = crud.get_bell_event(db, event_id)
             if not event or not event.is_active:
+                logger.warning(f"Event {event_id} not found or not active")
                 return
             
             # Check if the schedule is muted
             schedule_day = crud.get_schedule_day(db, event.schedule_day_id)
             if not schedule_day:
+                logger.warning(f"Schedule day not found for event {event_id}")
                 return
             
             schedule = crud.get_schedule(db, schedule_day.schedule_id)
             if not schedule or schedule.is_muted:
+                logger.warning(f"Schedule not found or muted for event {event_id}")
                 return
             
             logger.info(f"Triggering event {event_id} at {datetime.now()}")
+            logger.info(f"Event details: sound_id={event.sound_id}, tts_text={event.tts_text}")
             
             # Play audio based on event type
             if event.sound_id:
+                logger.info(f"Playing sound for event {event_id}")
                 self._play_sound(event.sound)
             elif event.tts_text:
+                logger.info(f"Playing TTS for event {event_id}")
                 self._play_tts(event.tts_text)
+            else:
+                logger.warning(f"No sound or TTS for event {event_id}")
                 
         except Exception as e:
             logger.error(f"Error triggering event {event_id}: {e}")
@@ -229,46 +253,144 @@ class BellScheduler:
             db.close()
     
     def _play_sound(self, sound):
-        """Play an audio file"""
+        """Play an audio file using the same logic as audio library"""
         try:
             if sound and sound.file_path and os.path.exists(sound.file_path):
                 # Get audio settings for volume and output device
                 audio_settings = self._get_audio_settings()
+                logger.info(f"Audio settings for scheduler: {audio_settings}")
                 
-                # Determine file type and choose appropriate player
-                file_extension = os.path.splitext(sound.file_path)[1].lower()
+                # Apply EQ if needed (same as audio library)
+                playback_file = sound.file_path
+                if audio_settings.get('eq'):
+                    eq_settings = audio_settings['eq']
+                    logger.info(f"EQ settings found: {eq_settings}")
+                    # Check if any EQ settings are non-zero
+                    eq_values = [float(v) for v in eq_settings.values()]
+                    logger.info(f"EQ values: {eq_values}")
+                    if any(v != 0 for v in eq_values):
+                        logger.info(f"Applying EQ settings: {eq_settings}")
+                        playback_file = self._apply_eq_to_audio(sound.file_path, eq_settings)
+                        logger.info(f"EQ processed file: {playback_file}")
+                    else:
+                        logger.info("No EQ settings to apply (all values are 0)")
+                else:
+                    logger.info("No EQ settings found in audio_settings")
                 
-                if file_extension in ['.mp3', '.m4a', '.aac']:
-                    # Use mpg123 for MP3 files
-                    cmd = ['mpg123', '-q']
+                # Use the same player logic as audio library
+                file_extension = os.path.splitext(playback_file)[1].lower()
+                logger.info(f"Playing file: {playback_file}, extension: {file_extension}")
+                
+                # Build player command with audio settings (same logic as audio library)
+                def build_player_command(player, file_path):
+                    base_cmd = [player]
                     
-                    # Add volume control if available
+                    # Add volume control
                     if audio_settings.get('volume') and audio_settings['volume'] != '100':
                         volume = int(audio_settings['volume'])
-                        cmd.extend(['-g', str(volume * 2)])  # mpg123 uses 0-200 scale
+                        if player == 'mpg123':
+                            base_cmd.extend(['-g', str(volume * 2)])  # mpg123 uses 0-200 scale
+                        elif player == 'ffplay':
+                            base_cmd.extend(['-volume', str(volume)])
+                        elif player == 'mpv':
+                            base_cmd.extend(['--volume', str(volume)])
+                        elif player == 'paplay':
+                            # paplay doesn't support volume directly
+                            pass
+                        logger.info(f"Applied volume: {volume}% to {player}")
+                    else:
+                        logger.info(f"No volume adjustment needed for {player}")
                     
                     # Add output device if specified
                     if audio_settings.get('output') and audio_settings['output'] != 'default':
                         output = audio_settings['output']
-                        if output.startswith('alsa_card_'):
+                        if player == 'mpg123' and output.startswith('alsa_card_'):
+                            # Extract card and device from output ID
                             parts = output.split('_')
                             if len(parts) >= 4:
                                 card = parts[2]
                                 device = parts[4]
-                                cmd.extend(['-a', f"hw:{card},{device}"])
+                                base_cmd.extend(['-a', f"hw:{card},{device}"])
+                        elif player == 'ffplay':
+                            base_cmd.extend(['-f', 'alsa', '-i', output])
+                        elif player == 'aplay':
+                            # aplay uses different device syntax
+                            if output.startswith('alsa_card_'):
+                                parts = output.split('_')
+                                if len(parts) >= 4:
+                                    card = parts[2]
+                                    device = parts[4]
+                                    base_cmd.extend(['-D', f"hw:{card},{device}"])
                     
-                    cmd.append(sound.file_path)
-                else:
-                    # Use aplay for WAV files
-                    cmd = ['aplay', '-q', sound.file_path]
+                    base_cmd.append(file_path)
+                    return base_cmd
                 
-                logger.info(f"Playing sound: {sound.name} with command: {' '.join(cmd)}")
-                subprocess.Popen(cmd)
+                # Prioritize players based on file type (same as audio library)
+                if file_extension in ['.mp3', '.m4a', '.aac']:
+                    players = ['mpg123', 'ffplay', 'mpv', 'paplay', 'aplay']
+                else:
+                    players = ['aplay', 'paplay', 'ffplay', 'mpg123', 'mpv']
+                
+                # Try each player until one works (same as audio library)
+                for i, player in enumerate(players):
+                    try:
+                        player_cmd = build_player_command(player, playback_file)
+                        logger.info(f"Trying player {i+1}: {' '.join(player_cmd)}")
+                        process = subprocess.Popen(player_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        logger.info(f"Successfully started playback with: {' '.join(player_cmd)}")
+                        return  # Success, exit the function
+                    except FileNotFoundError:
+                        logger.warning(f"Player not found: {player}")
+                        continue
+                    except Exception as e:
+                        logger.warning(f"Error with player {player}: {e}")
+                        continue
+                
+                # If we get here, no player worked
+                logger.error(f"Failed to play {sound.name} with any available player")
                 
             else:
                 logger.warning(f"Sound file not found: {sound.file_path if sound else 'None'}")
         except Exception as e:
             logger.error(f"Error playing sound: {e}")
+    
+    def _apply_eq_to_audio(self, input_file, eq_settings):
+        """Apply EQ to audio file using ffmpeg (same as audio library)"""
+        try:
+            import tempfile
+            import subprocess
+            
+            logger.info(f"Starting EQ processing for {input_file}")
+            logger.info(f"EQ settings: {eq_settings}")
+            
+            # Create temporary output file
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp_file:
+                output_file = tmp_file.name
+            
+            # Build ffmpeg command with EQ filters
+            cmd = [
+                'ffmpeg', '-i', input_file, '-y',
+                '-af', f"equalizer=f=60:width_type=o:width=2:g={eq_settings.get('bass', 0)},"
+                       f"equalizer=f=8000:width_type=o:width=2:g={eq_settings.get('treble', 0)},"
+                       f"equalizer=f=100:width_type=o:width=2:g={eq_settings.get('low', 0)},"
+                       f"equalizer=f=1000:width_type=o:width=2:g={eq_settings.get('mid', 0)},"
+                       f"equalizer=f=8000:width_type=o:width=2:g={eq_settings.get('high', 0)}",
+                output_file
+            ]
+            
+            logger.info(f"Running ffmpeg command: {' '.join(cmd)}")
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                logger.info("EQ processing successful")
+                return output_file
+            else:
+                logger.error(f"EQ processing failed: {result.stderr}")
+                return input_file  # Return original file if EQ fails
+                
+        except Exception as e:
+            logger.error(f"Error applying EQ: {e}")
+            return input_file  # Return original file if EQ fails
     
     def _get_audio_settings(self):
         """Get audio settings from database"""
@@ -277,6 +399,7 @@ class BellScheduler:
             # Import here to avoid circular imports
             from api.sound import get_audio_settings_from_db
             settings = get_audio_settings_from_db(db)
+            logger.info(f"Retrieved audio settings from database: {settings}")
             db.close()
             return settings
         except Exception as e:

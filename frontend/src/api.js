@@ -409,6 +409,39 @@ export default {
     return res.data;
   },
 
+  getLanguages: async () => {
+    const res = await axiosInstance.get(`${API}/tts/languages`);
+    return res.data;
+  },
+
+  downloadVoice: async (voiceId) => {
+    const form = new FormData();
+    form.append("voice_id", voiceId);
+    const res = await axiosInstance.post(`${API}/tts/download-voice`, form);
+    return res.data;
+  },
+
+  removeVoice: async (voiceId) => {
+    const form = new FormData();
+    form.append("voice_id", voiceId);
+    const res = await axiosInstance.post(`${API}/tts/remove-voice`, form);
+    return res.data;
+  },
+
+  detectLanguage: async (text) => {
+    const form = new FormData();
+    form.append("text", text);
+    const res = await axiosInstance.post(`${API}/tts/detect-language`, form);
+    return res.data;
+  },
+
+  toggleMockMode: async (mockMode) => {
+    const form = new FormData();
+    form.append("mock_mode", mockMode);
+    const res = await axiosInstance.post(`${API}/tts/toggle-mock-mode`, form);
+    return res.data;
+  },
+
   // Admin functions (with authentication)
   getAdminSettings: async () => {
     const res = await axiosInstance.get(`${BASE_URL}/api/admin/settings`);

@@ -70,19 +70,19 @@ This creates:
 ### **Backend Setup**
 
 1. **Navigate to backend directory:**
-   ```bash
-   cd backend
+```bash
+cd backend
    ```
 
 2. **Create virtual environment:**
    ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
    ```
 
 3. **Install dependencies:**
    ```bash
-   pip install -r requirements.txt
+pip install -r requirements.txt
    ```
 
 4. **Start the server:**
@@ -97,19 +97,19 @@ This creates:
 ### **Frontend Setup**
 
 1. **Navigate to frontend directory:**
-   ```bash
-   cd frontend
+```bash
+cd frontend
    ```
 
 2. **Install dependencies:**
    ```bash
-   npm install
+npm install
    ```
 
 3. **Start the development server:**
    ```bash
-   npm start
-   ```
+npm start
+```
 
 ## 📁 **Project Structure**
 

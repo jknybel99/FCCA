@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>School Bell System - Status Dashboard</title>
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            --card-bg: rgba(255, 255, 255, 0.1);
+            --card-border: rgba(255, 255, 255, 0.2);
+            --text-color: white;
+            --accent-color: #4facfe;
+        }
+        
+        /* Theme: Dark Blue (Default) */
+        .theme-dark-blue {
+            --primary-gradient: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            --card-bg: rgba(255, 255, 255, 0.1);
+            --card-border: rgba(255, 255, 255, 0.2);
+            --text-color: white;
+            --accent-color: #4facfe;
+        }
+        
+        /* Theme: Ocean Blue */
+        .theme-ocean {
+            --primary-gradient: linear-gradient(135deg, #0f4c75 0%, #3282b8 100%);
+            --card-bg: rgba(255, 255, 255, 0.15);
+            --card-border: rgba(255, 255, 255, 0.25);
+            --text-color: white;
+            --accent-color: #00d4ff;
+        }
+        
+        /* Theme: Midnight */
+        .theme-midnight {
+            --primary-gradient: linear-gradient(135deg, #0c0c0c 0%, #1a1a2e 100%);
+            --card-bg: rgba(255, 255, 255, 0.05);
+            --card-border: rgba(255, 255, 255, 0.1);
+            --text-color: white;
+            --accent-color: #6c5ce7;
+        }
+        
+        /* Theme: Forest */
+        .theme-forest {
+            --primary-gradient: linear-gradient(135deg, #2d5016 0%, #4a7c59 100%);
+            --card-bg: rgba(255, 255, 255, 0.1);
+            --card-border: rgba(255, 255, 255, 0.2);
+            --text-color: white;
+            --accent-color: #00b894;
+        }
+        
+        /* Theme: Sunset */
+        .theme-sunset {
+            --primary-gradient: linear-gradient(135deg, #8b0000 0%, #ff6b35 100%);
+            --card-bg: rgba(255, 255, 255, 0.1);
+            --card-border: rgba(255, 255, 255, 0.2);
+            --text-color: white;
+            --accent-color: #ffa726;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: var(--primary-gradient);
+            color: var(--text-color);
+            min-height: 100vh;
+            transition: background 0.3s ease;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .status-card {
+            background: var(--card-bg);
+            border-radius: 15px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--card-border);
+            transition: all 0.3s ease;
+            cursor: default;
+        }
+        
+        .status-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+            border-color: var(--accent-color);
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 10px;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-online { 
+            background-color: #4CAF50; 
+            box-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+        }
+        .status-offline { 
+            background-color: #f44336; 
+            animation: none;
+        }
+        .status-warning { 
+            background-color: #ff9800; 
+            box-shadow: 0 0 10px rgba(255, 152, 0, 0.5);
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        /* Theme selector styling */
+        #themeSelector {
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--card-border);
+            background: var(--card-bg);
+            color: var(--text-color);
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            min-width: 150px;
+        }
+        
+        #themeSelector:hover {
+            border-color: var(--accent-color);
+            background: rgba(255, 255, 255, 0.15);
+        }
+        
+        #themeSelector option {
+            background: #2a2a2a;
+            color: white;
+            padding: 8px;
+        }
+        
+        #themeSelector option:hover {
+            background: var(--accent-color);
+        }
+        
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            margin: 10px 0;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .metric:last-child {
+            border-bottom: none;
+        }
+        
+        .metric-value {
+            font-weight: bold;
+        }
+        
+        .metric-value.good {
+            color: #4caf50;
+        }
+        
+        .metric-value.warning {
+            color: #ff9800;
+        }
+        
+        .metric-value.critical {
+            color: #f44336;
+        }
+        
+        .refresh-btn {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            color: var(--text-color);
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px;
+            transition: all 0.3s ease;
+        }
+        
+        .refresh-btn:hover {
+            background: var(--accent-color);
+            transform: translateY(-2px);
+        }
+        
+        .auto-refresh {
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .log-container {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            padding: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        
+        .log-info { background: rgba(33, 150, 243, 0.2); }
+        .log-warning { background: rgba(255, 152, 0, 0.2); }
+        .log-error { background: rgba(244, 67, 54, 0.2); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔔 School Bell System Status Dashboard</h1>
+            <p>Real-time system monitoring and health status</p>
+            <div style="margin-top: 10px; font-size: 14px; opacity: 0.8;">
+                <strong>Monitoring:</strong> <span id="monitoringUrl">Loading...</span>
+            </div>
+            <div style="margin-top: 15px;">
+                <label for="themeSelector" style="margin-right: 10px;">🎨 Theme:</label>
+                <select id="themeSelector">
+                    <option value="theme-dark-blue">Dark Blue</option>
+                    <option value="theme-ocean">Ocean Blue</option>
+                    <option value="theme-midnight">Midnight</option>
+                    <option value="theme-forest">Forest</option>
+                    <option value="theme-sunset">Sunset</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="auto-refresh">
+            <button class="refresh-btn" onclick="refreshStatus()">🔄 Refresh Now</button>
+            <label>
+                <input type="checkbox" id="autoRefresh" checked> Auto-refresh every 30 seconds
+            </label>
+        </div>
+        
+        <div class="status-grid">
+            <div class="status-card">
+                <h3>🌐 System Status</h3>
+                <div class="metric">
+                    <span>Backend API</span>
+                    <span><span class="status-indicator" id="backendStatus"></span><span id="backendText">Checking...</span></span>
+                </div>
+                <div class="metric">
+                    <span>Frontend</span>
+                    <span><span class="status-indicator" id="frontendStatus"></span><span id="frontendText">Checking...</span></span>
+                </div>
+                <div class="metric">
+                    <span>Bell Scheduler</span>
+                    <span><span class="status-indicator" id="schedulerStatus"></span><span id="schedulerText">Checking...</span></span>
+                </div>
+            </div>
+            
+            <div class="status-card">
+                <h3>📅 Next Event</h3>
+                <div id="nextEvent">
+                    <div class="metric">
+                        <span>Event</span>
+                        <span id="nextEventName">Loading...</span>
+                    </div>
+                    <div class="metric">
+                        <span>Time</span>
+                        <span id="nextEventTime">Loading...</span>
+                    </div>
+                    <div class="metric">
+                        <span>Countdown</span>
+                        <span id="nextEventCountdown">Loading...</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="status-card">
+                <h3>📊 System Metrics</h3>
+                <div class="metric">
+                    <span>CPU Usage</span>
+                    <span id="cpuUsage">Loading...</span>
+                </div>
+                <div class="metric">
+                    <span>Memory Usage</span>
+                    <span id="memoryUsage">Loading...</span>
+                </div>
+                <div class="metric">
+                    <span>Disk Usage</span>
+                    <span id="diskUsage">Loading...</span>
+                </div>
+                <div class="metric">
+                    <span>System Uptime</span>
+                    <span id="systemUptime">Loading...</span>
+                </div>
+                <div class="metric">
+                    <span>CPU Temperature</span>
+                    <span id="cpuTemp">Loading...</span>
+                </div>
+                <div class="metric">
+                    <span>Last Update</span>
+                    <span id="lastUpdate">Loading...</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="status-card">
+            <h3>📝 Activity Log</h3>
+            <div class="log-container" id="activityLog">
+                <div class="log-entry log-info">System monitor started</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let autoRefreshInterval;
+        
+        // Configuration - can be overridden by URL parameters
+        const config = {
+            backendUrl: new URLSearchParams(window.location.search).get('backend') || 'http://localhost:8000',
+            frontendUrl: new URLSearchParams(window.location.search).get('frontend') || 'http://localhost:3000'
+        };
+        
+        function updateStatus() {
+            fetch(`${config.backendUrl}/api/system/status`)
+                .then(response => response.json())
+                .then(data => {
+                    // Update backend status
+                    const backendStatus = document.getElementById('backendStatus');
+                    const backendText = document.getElementById('backendText');
+                    if (data.scheduler_running) {
+                        backendStatus.className = 'status-indicator status-online';
+                        backendText.textContent = 'Online';
+                    } else {
+                        backendStatus.className = 'status-indicator status-offline';
+                        backendText.textContent = 'Offline';
+                    }
+                    
+                    // Update scheduler status
+                    const schedulerStatus = document.getElementById('schedulerStatus');
+                    const schedulerText = document.getElementById('schedulerText');
+                    if (data.scheduler_running) {
+                        schedulerStatus.className = 'status-indicator status-online';
+                        schedulerText.textContent = 'Running';
+                    } else {
+                        schedulerStatus.className = 'status-indicator status-offline';
+                        schedulerText.textContent = 'Stopped';
+                    }
+                    
+                    // Update last update time
+                    document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+                })
+                .catch(error => {
+                    console.error('Error fetching status:', error);
+                    addLogEntry('Error fetching system status: ' + error.message, 'error');
+                });
+                
+            // Fetch system metrics
+            fetch(`${config.backendUrl}/api/admin/system-stats`)
+                .then(response => response.json())
+                .then(data => {
+                    // Update CPU usage with color coding
+                    const cpuElement = document.getElementById('cpuUsage');
+                    cpuElement.textContent = `${data.cpu_percent}%`;
+                    cpuElement.className = 'metric-value';
+                    if (data.cpu_percent < 50) cpuElement.classList.add('good');
+                    else if (data.cpu_percent < 80) cpuElement.classList.add('warning');
+                    else cpuElement.classList.add('critical');
+                    
+                    // Update memory usage with color coding
+                    const memoryElement = document.getElementById('memoryUsage');
+                    memoryElement.textContent = `${data.memory_percent}% (${data.memory_used_gb}GB)`;
+                    memoryElement.className = 'metric-value';
+                    if (data.memory_percent < 60) memoryElement.classList.add('good');
+                    else if (data.memory_percent < 85) memoryElement.classList.add('warning');
+                    else memoryElement.classList.add('critical');
+                    
+                    // Update disk usage with color coding
+                    const diskElement = document.getElementById('diskUsage');
+                    diskElement.textContent = `${data.disk_percent}% (${data.disk_free_gb}GB free)`;
+                    diskElement.className = 'metric-value';
+                    if (data.disk_percent < 70) diskElement.classList.add('good');
+                    else if (data.disk_percent < 90) diskElement.classList.add('warning');
+                    else diskElement.classList.add('critical');
+                    
+                    // Update system uptime
+                    const uptimeText = `${data.uptime_days}d ${data.uptime_hours}h`;
+                    document.getElementById('systemUptime').textContent = uptimeText;
+                    
+                    // Update CPU temperature with color coding
+                    const tempElement = document.getElementById('cpuTemp');
+                    tempElement.textContent = data.cpu_temp;
+                    tempElement.className = 'metric-value';
+                    if (data.cpu_temp !== 'N/A') {
+                        const temp = parseFloat(data.cpu_temp);
+                        if (temp < 60) tempElement.classList.add('good');
+                        else if (temp < 80) tempElement.classList.add('warning');
+                        else tempElement.classList.add('critical');
+                    }
+                    
+                    addLogEntry(`System metrics updated - CPU: ${data.cpu_percent}%, Memory: ${data.memory_percent}%`, 'info');
+                })
+                .catch(error => {
+                    console.error('Error fetching system metrics:', error);
+                    document.getElementById('cpuUsage').textContent = 'Error';
+                    document.getElementById('memoryUsage').textContent = 'Error';
+                    document.getElementById('diskUsage').textContent = 'Error';
+                    document.getElementById('systemUptime').textContent = 'Error';
+                    document.getElementById('cpuTemp').textContent = 'Error';
+                    addLogEntry('Error fetching system metrics: ' + error.message, 'error');
+                });
+                
+            // Check frontend status
+            fetch(config.frontendUrl)
+                .then(response => {
+                    const frontendStatus = document.getElementById('frontendStatus');
+                    const frontendText = document.getElementById('frontendText');
+                    if (response.ok) {
+                        frontendStatus.className = 'status-indicator status-online';
+                        frontendText.textContent = 'Online';
+                    } else {
+                        frontendStatus.className = 'status-indicator status-warning';
+                        frontendText.textContent = 'Issues';
+                    }
+                })
+                .catch(error => {
+                    const frontendStatus = document.getElementById('frontendStatus');
+                    const frontendText = document.getElementById('frontendText');
+                    frontendStatus.className = 'status-indicator status-offline';
+                    frontendText.textContent = 'Offline';
+                });
+                
+            // Get next event
+            fetch(`${config.backendUrl}/api/schedule/next`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.time) {
+                        document.getElementById('nextEventName').textContent = data.description || 'Bell Event';
+                        document.getElementById('nextEventTime').textContent = data.time;
+                        
+                        // Calculate countdown
+                        const now = new Date();
+                        const eventTime = new Date();
+                        const [hours, minutes] = data.time.split(':');
+                        eventTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+                        
+                        if (eventTime < now) {
+                            eventTime.setDate(eventTime.getDate() + 1);
+                        }
+                        
+                        const diff = eventTime - now;
+                        const hoursLeft = Math.floor(diff / (1000 * 60 * 60));
+                        const minutesLeft = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                        
+                        document.getElementById('nextEventCountdown').textContent = 
+                            `${hoursLeft}h ${minutesLeft}m`;
+                    } else {
+                        document.getElementById('nextEventName').textContent = 'No events scheduled';
+                        document.getElementById('nextEventTime').textContent = 'N/A';
+                        document.getElementById('nextEventCountdown').textContent = 'N/A';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching next event:', error);
+                });
+        }
+        
+        function addLogEntry(message, type = 'info') {
+            const logContainer = document.getElementById('activityLog');
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry log-${type}`;
+            logEntry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logContainer.insertBefore(logEntry, logContainer.firstChild);
+            
+            // Keep only last 50 entries
+            while (logContainer.children.length > 50) {
+                logContainer.removeChild(logContainer.lastChild);
+            }
+        }
+        
+        function refreshStatus() {
+            addLogEntry('Manual refresh triggered', 'info');
+            updateStatus();
+        }
+        
+        function toggleAutoRefresh() {
+            const checkbox = document.getElementById('autoRefresh');
+            if (checkbox.checked) {
+                autoRefreshInterval = setInterval(updateStatus, 30000);
+                addLogEntry('Auto-refresh enabled', 'info');
+            } else {
+                clearInterval(autoRefreshInterval);
+                addLogEntry('Auto-refresh disabled', 'info');
+            }
+        }
+        
+        // Initialize
+        // Theme management
+        function changeTheme(themeName) {
+            document.body.className = themeName;
+            localStorage.setItem('dashboardTheme', themeName);
+        }
+        
+        function loadSavedTheme() {
+            const savedTheme = localStorage.getItem('dashboardTheme') || 'theme-dark-blue';
+            document.body.className = savedTheme;
+            document.getElementById('themeSelector').value = savedTheme;
+        }
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            // Load saved theme
+            loadSavedTheme();
+            
+            // Theme selector event listener
+            document.getElementById('themeSelector').addEventListener('change', function() {
+                changeTheme(this.value);
+            });
+            
+            // Display monitoring URLs
+            document.getElementById('monitoringUrl').textContent = 
+                `Backend: ${config.backendUrl} | Frontend: ${config.frontendUrl}`;
+            
+            updateStatus();
+            toggleAutoRefresh();
+            
+            document.getElementById('autoRefresh').addEventListener('change', toggleAutoRefresh);
+            
+            // Add some sample log entries
+            setTimeout(() => addLogEntry('System check completed', 'info'), 1000);
+            setTimeout(() => addLogEntry('All services operational', 'info'), 2000);
+        });
+    </script>
+</body>
+</html>

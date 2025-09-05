@@ -66,12 +66,29 @@ start_backend() {
         python3 -m venv venv
     fi
     
-    # Activate virtual environment and install dependencies
-    source venv/bin/activate
-    pip install -r requirements.txt > /dev/null 2>&1
+    # Install dependencies and start backend
+    log_message "${BLUE}Checking Python environment...${NC}"
+    log_message "${BLUE}Current directory: $(pwd)${NC}"
+    log_message "${BLUE}Python3 path: $(which python3)${NC}"
     
-    # Start backend in background
-    nohup python main.py > "$BACKEND_LOG" 2>&1 &
+    if [ -f "venv/bin/python" ]; then
+        log_message "${GREEN}Using virtual environment Python${NC}"
+        log_message "${BLUE}Venv Python path: $(pwd)/venv/bin/python${NC}"
+        # Install dependencies using venv pip
+        venv/bin/pip install -r requirements.txt > /dev/null 2>&1
+        
+        # Start backend in background using venv python
+        log_message "${BLUE}Starting backend with: $(pwd)/venv/bin/python main.py${NC}"
+        nohup venv/bin/python main.py > "$BACKEND_LOG" 2>&1 &
+    else
+        log_message "${YELLOW}Virtual environment not found, using system Python${NC}"
+        # Install dependencies using system pip
+        pip3 install -r requirements.txt > /dev/null 2>&1
+        
+        # Start backend in background using system python
+        log_message "${BLUE}Starting backend with: python3 main.py${NC}"
+        nohup python3 main.py > "$BACKEND_LOG" 2>&1 &
+    fi
     local backend_pid=$!
     echo $backend_pid > "$BACKEND_PID"
     

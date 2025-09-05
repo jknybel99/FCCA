@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Request
 from sqlalchemy.orm import Session
 from database import SessionLocal
 import crud, schemas
@@ -18,7 +18,7 @@ def get_db():
 
 # System settings management
 @router.get("/settings")
-def get_admin_settings(db: Session = Depends(get_db)):
+def get_admin_settings(request: Request, db: Session = Depends(get_db)):
     """Get all system settings"""
     settings = {}
     setting_keys = [
@@ -34,9 +34,17 @@ def get_admin_settings(db: Session = Depends(get_db)):
             if key == 'school_name':
                 settings['schoolName'] = value
             elif key == 'school_logo':
-                # Make logo URL absolute if it's a relative path
+                # Make logo URL absolute for remote access
                 if value and value.startswith('/'):
-                    settings['schoolLogo'] = f"http://localhost:8000{value}"
+                    # Construct absolute URL using the request host
+                    base_url = f"{request.url.scheme}://{request.url.netloc}"
+                    settings['schoolLogo'] = f"{base_url}{value}"
+                elif value and 'localhost' in value:
+                    # Fix old localhost URLs by replacing with current host
+                    base_url = f"{request.url.scheme}://{request.url.netloc}"
+                    # Extract the path part after localhost:8000
+                    path_part = value.split('localhost:8000')[-1]
+                    settings['schoolLogo'] = f"{base_url}{path_part}"
                 else:
                     settings['schoolLogo'] = value
             elif key == 'contact_email':
@@ -409,6 +417,22 @@ def get_system_info():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error getting system info: {str(e)}")
+
+@router.get("/debug-audio-settings")
+def debug_audio_settings(db: Session = Depends(get_db)):
+    """Debug endpoint to check audio settings"""
+    try:
+        from api.sound import get_audio_settings_from_db
+        settings = get_audio_settings_from_db(db)
+        return {
+            "audio_settings": settings,
+            "message": "Audio settings retrieved successfully"
+        }
+    except Exception as e:
+        return {
+            "error": str(e),
+            "message": "Error retrieving audio settings"
+        }
 
 @router.get("/system-stats")
 def get_system_stats():

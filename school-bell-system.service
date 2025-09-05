@@ -1,0 +1,31 @@
+[Unit]
+Description=School Bell System
+After=network.target
+Wants=network.target
+
+[Service]
+Type=forking
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/Desktop/Audio Server
+ExecStart=/home/pi/Desktop/Audio Server/start_school_bell_system.sh start
+ExecStop=/home/pi/Desktop/Audio Server/start_school_bell_system.sh stop
+ExecReload=/home/pi/Desktop/Audio Server/start_school_bell_system.sh restart
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Environment variables
+Environment=NODE_ENV=production
+Environment=PYTHONPATH=/home/pi/Desktop/Audio Server/backend
+
+# Security settings (commented out for Pi compatibility)
+# NoNewPrivileges=true
+# PrivateTmp=true
+# ProtectSystem=strict
+# ProtectHome=read-only
+ReadWritePaths=/home/pi/Desktop/Audio Server
+
+[Install]
+WantedBy=multi-user.target

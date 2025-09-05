@@ -1,6 +1,17 @@
 import axios from "axios";
 
-const BASE_URL = "http://localhost:8000";
+// Smart backend URL detection
+const getBackendUrl = () => {
+  // If we're running on localhost (same machine), use localhost
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    return "http://localhost:8000";
+  }
+  
+  // If running from a network device, use the same hostname but port 8000
+  return `http://${window.location.hostname}:8000`;
+};
+
+const BASE_URL = getBackendUrl();
 const API = `${BASE_URL}/api`;
 
 // Create axios instance with interceptors

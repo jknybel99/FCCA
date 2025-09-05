@@ -11,7 +11,17 @@ import {
   IconButton,
   Snackbar,
   Button,
-  CssBaseline
+  CssBaseline,
+  Menu,
+  MenuItem,
+  useMediaQuery,
+  useTheme,
+  Drawer,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  Divider
 } from "@mui/material";
 import AudioUpload from "./components/AudioUpload";
 import ScheduleManager from "./components/ScheduleManager";
@@ -31,6 +41,14 @@ import { ThemeProvider, createTheme } from "@mui/material/styles";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import CloseIcon from '@mui/icons-material/Close';
+import MenuIcon from '@mui/icons-material/Menu';
+import DashboardIcon from '@mui/icons-material/Dashboard';
+import ScheduleIcon from '@mui/icons-material/Schedule';
+import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
+import LibraryMusicIcon from '@mui/icons-material/LibraryMusic';
+import RecordVoiceOverIcon from '@mui/icons-material/RecordVoiceOver';
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
+import PersonIcon from '@mui/icons-material/Person';
 
 const theme = createTheme({
   palette: {
@@ -58,6 +76,8 @@ const theme = createTheme({
 
 function AppContent() {
   const { user, isAuthenticated, logout, isAdmin, loading } = useAuth();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [audioFiles, setAudioFiles] = useState([]);
   const [scheduledEvents, setScheduledEvents] = useState([]);
   const [previewUrl, setPreviewUrl] = useState(null);
@@ -71,6 +91,8 @@ function AppContent() {
     footerText: ''
   });
   const [scheduleRefreshKey, setScheduleRefreshKey] = useState(0);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [userMenuAnchor, setUserMenuAnchor] = useState(null);
 
   const refreshAudio = () => api.getAudioFiles().then(setAudioFiles);
   const refreshSchedules = () => api.getBellEvents().then(setScheduledEvents);
@@ -123,6 +145,48 @@ function AppContent() {
     setSnackbar({ ...snackbar, open: false });
   };
 
+  const handleMobileMenuToggle = () => {
+    setMobileMenuOpen(!mobileMenuOpen);
+  };
+
+  const handleUserMenuOpen = (event) => {
+    setUserMenuAnchor(event.currentTarget);
+  };
+
+  const handleUserMenuClose = () => {
+    setUserMenuAnchor(null);
+  };
+
+  const handleLogout = () => {
+    handleUserMenuClose();
+    logout();
+  };
+
+  const handleMobileTabChange = (tabIndex) => {
+    setCurrentTab(tabIndex);
+    setMobileMenuOpen(false);
+  };
+
+  const getTabItems = () => {
+    const items = [
+      { label: "Dashboard", icon: <DashboardIcon />, index: 0 },
+      { label: "Calendar", icon: <CalendarTodayIcon />, index: 2 }
+    ];
+
+    if (isAdmin()) {
+      items.splice(1, 0, { label: "Schedule Manager", icon: <ScheduleIcon />, index: 1 });
+      items.push(
+        { label: "Audio Library", icon: <LibraryMusicIcon />, index: 3 },
+        { label: "TTS Manager", icon: <RecordVoiceOverIcon />, index: 4 },
+        { label: "Admin Panel", icon: <AdminPanelSettingsIcon />, index: 5 }
+      );
+    } else {
+      items.push({ label: "My Profile", icon: <PersonIcon />, index: 2 });
+    }
+
+    return items;
+  };
+
   const renderTabContent = () => {
     // For admin users, use the current tab directly
     // For non-admin users, only allow tabs 0, 1, 2 (Dashboard, Calendar, My Profile)
@@ -170,60 +234,212 @@ function AppContent() {
         <CssBaseline />
         <AppBar position="static">
           <Toolbar>
+            {/* Mobile menu button */}
+            {isMobile && (
+              <IconButton
+                edge="start"
+                color="inherit"
+                aria-label="menu"
+                onClick={handleMobileMenuToggle}
+                sx={{ mr: 2 }}
+              >
+                <MenuIcon />
+              </IconButton>
+            )}
+
+            {/* School logo */}
             {adminSettings.schoolLogo && (
               <Box
                 component="img"
                 src={adminSettings.schoolLogo}
                 alt="School Logo"
                 sx={{
-                  height: 40,
+                  height: isMobile ? 32 : 40,
                   width: 'auto',
                   mr: 2,
                   borderRadius: 1
                 }}
               />
             )}
-            <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-              {adminSettings.schoolName ? `${adminSettings.schoolName} - School Bell System` : 'School Bell System'}
+
+            {/* School name - responsive */}
+            <Typography 
+              variant={isMobile ? "subtitle1" : "h6"} 
+              component="div" 
+              sx={{ 
+                flexGrow: 1,
+                fontSize: isMobile ? '0.9rem' : '1.25rem',
+                lineHeight: 1.2
+              }}
+            >
+              {isMobile 
+                ? (adminSettings.schoolName || 'School Bell System')
+                : (adminSettings.schoolName ? `${adminSettings.schoolName} - School Bell System` : 'School Bell System')
+              }
             </Typography>
             
-            {/* User info and logout */}
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Typography variant="body2" sx={{ color: 'white' }}>
-                {user?.username} {user?.is_admin ? '(Admin)' : '(User)'}
-              </Typography>
-              <Button 
-                color="inherit" 
-                onClick={logout}
-                variant="outlined"
-                size="small"
-              >
-                Logout
-              </Button>
+            {/* User info and logout - responsive */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: isMobile ? 1 : 2 }}>
+              {!isMobile && (
+                <Typography variant="body2" sx={{ color: 'white' }}>
+                  {user?.username} {user?.is_admin ? '(Admin)' : '(User)'}
+                </Typography>
+              )}
+              
+              {isMobile ? (
+                <Button 
+                  color="inherit" 
+                  onClick={handleUserMenuOpen}
+                  variant="outlined"
+                  size="small"
+                  sx={{ minWidth: 'auto', px: 1 }}
+                >
+                  {user?.username}
+                </Button>
+              ) : (
+                <Button 
+                  color="inherit" 
+                  onClick={logout}
+                  variant="outlined"
+                  size="small"
+                >
+                  Logout
+                </Button>
+              )}
             </Box>
           </Toolbar>
         </AppBar>
 
-        <Container maxWidth="lg" sx={{ mt: 4, backgroundColor: '#fdfcfc', minHeight: '100vh' }}>
-          <Paper sx={{ mb: 3 }}>
-            <Tabs value={currentTab} onChange={handleTabChange} centered>
-              <Tab label="Dashboard" />
-              {isAdmin() && <Tab label="Schedule Manager" />}
-              <Tab label="Calendar" />
-              {!isAdmin() && <Tab label="My Profile" />}
-              {isAdmin() && <Tab label="Audio Library" />}
-              {isAdmin() && <Tab label="TTS Manager" />}
-              {isAdmin() && <Tab label="Admin Panel" />}
-            </Tabs>
-          </Paper>
+        <Container 
+          maxWidth="lg" 
+          sx={{ 
+            mt: isMobile ? 2 : 4, 
+            px: isMobile ? 1 : 3,
+            backgroundColor: '#fdfcfc', 
+            minHeight: '100vh' 
+          }}
+        >
+          {/* Desktop tabs */}
+          {!isMobile && (
+            <Paper sx={{ mb: 3 }}>
+              <Tabs value={currentTab} onChange={handleTabChange} centered>
+                <Tab label="Dashboard" />
+                {isAdmin() && <Tab label="Schedule Manager" />}
+                <Tab label="Calendar" />
+                {!isAdmin() && <Tab label="My Profile" />}
+                {isAdmin() && <Tab label="Audio Library" />}
+                {isAdmin() && <Tab label="TTS Manager" />}
+                {isAdmin() && <Tab label="Admin Panel" />}
+              </Tabs>
+            </Paper>
+          )}
+
+          {/* Mobile menu drawer */}
+          <Drawer
+            anchor="left"
+            open={mobileMenuOpen}
+            onClose={handleMobileMenuToggle}
+            sx={{
+              '& .MuiDrawer-paper': {
+                width: 280,
+                boxSizing: 'border-box',
+              },
+            }}
+          >
+            <Box sx={{ p: 2 }}>
+              <Typography variant="h6" sx={{ mb: 2, color: 'primary.main' }}>
+                {adminSettings.schoolName || 'School Bell System'}
+              </Typography>
+              <Divider sx={{ mb: 2 }} />
+              
+              <List>
+                {getTabItems().map((item) => (
+                  <ListItem
+                    button
+                    key={item.index}
+                    onClick={() => handleMobileTabChange(item.index)}
+                    selected={currentTab === item.index}
+                    sx={{
+                      borderRadius: 1,
+                      mb: 0.5,
+                      '&.Mui-selected': {
+                        backgroundColor: 'primary.main',
+                        color: 'white',
+                        '&:hover': {
+                          backgroundColor: 'primary.dark',
+                        },
+                      },
+                    }}
+                  >
+                    <ListItemIcon sx={{ color: currentTab === item.index ? 'white' : 'inherit' }}>
+                      {item.icon}
+                    </ListItemIcon>
+                    <ListItemText primary={item.label} />
+                  </ListItem>
+                ))}
+              </List>
+              
+              <Divider sx={{ my: 2 }} />
+              
+              <Box sx={{ p: 2 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  Logged in as: {user?.username}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  {user?.is_admin ? 'Administrator' : 'User'}
+                </Typography>
+                <Button
+                  variant="outlined"
+                  color="error"
+                  fullWidth
+                  onClick={handleLogout}
+                >
+                  Logout
+                </Button>
+              </Box>
+            </Box>
+          </Drawer>
+
+          {/* User menu for mobile */}
+          <Menu
+            anchorEl={userMenuAnchor}
+            open={Boolean(userMenuAnchor)}
+            onClose={handleUserMenuClose}
+            anchorOrigin={{
+              vertical: 'bottom',
+              horizontal: 'right',
+            }}
+            transformOrigin={{
+              vertical: 'top',
+              horizontal: 'right',
+            }}
+          >
+            <MenuItem onClick={handleUserMenuClose}>
+              <Typography variant="body2">
+                {user?.username} {user?.is_admin ? '(Admin)' : '(User)'}
+              </Typography>
+            </MenuItem>
+            <Divider />
+            <MenuItem onClick={handleLogout}>
+              <Typography variant="body2" color="error">
+                Logout
+              </Typography>
+            </MenuItem>
+          </Menu>
           
           <ProtectedRoute>
             {renderTabContent()}
           </ProtectedRoute>
 
           {/* Footer */}
-          <Box sx={{ mt: 6, py: 3, textAlign: 'center', color: 'text.secondary' }}>
-            <Typography variant="body2">
+          <Box sx={{ 
+            mt: isMobile ? 4 : 6, 
+            py: isMobile ? 2 : 3, 
+            textAlign: 'center', 
+            color: 'text.secondary',
+            px: isMobile ? 2 : 0
+          }}>
+            <Typography variant={isMobile ? "caption" : "body2"}>
               {adminSettings.footerText || 'School Bell System - Automated Bell Scheduling'}
             </Typography>
           </Box>

@@ -15,6 +15,56 @@ A comprehensive school bell scheduling system with automated scheduling, audio m
 - **User Management**: Role-based access control system
 - **Authentication**: Secure login with JWT tokens
 
+## 🔒 **Data Privacy & Management**
+
+### **What Data is Stored**
+The system stores the following data locally on your server:
+- **User accounts** (usernames, emails, hashed passwords)
+- **Bell schedules** and events
+- **Audio files** (uploaded MP3s, WAVs, etc.)
+- **TTS generated files** (text-to-speech audio)
+- **System settings** and configuration
+- **Backup files** (if created)
+
+### **Data Privacy**
+- **No data is sent to external servers** (except for TTS voice downloads)
+- **All data remains on your local server**
+- **No telemetry or analytics** are collected
+- **No personal information** is shared with third parties
+
+### **Clearing Your Data**
+To completely reset the system and remove all user data:
+
+```bash
+# Clear all user data (schedules, audio files, users, etc.)
+python clear_user_data.py
+
+# Or with automatic confirmation
+python clear_user_data.py --confirm
+```
+
+This will remove:
+- All schedules and events
+- All user accounts
+- All uploaded audio files
+- All TTS generated files
+- All backup files
+- All downloaded TTS voices
+
+### **Sample Data Setup**
+For new installations or after clearing data:
+
+```bash
+# Set up sample data for demonstration
+python setup_sample_data.py
+```
+
+This creates:
+- Sample bell schedule
+- Default admin user (admin/admin123)
+- Sample audio file structure
+- Basic system configuration
+
 ## 🚀 **Quick Start**
 
 ### **Backend Setup**

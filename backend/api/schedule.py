@@ -40,7 +40,8 @@ def update_bell_event(event_id: int, event_update: dict, db: Session = Depends(g
     event = crud.update_bell_event(db, event_id, event_update)
     if not event:
         raise HTTPException(status_code=404, detail="Bell event not found")
-    bell_scheduler.refresh_schedule()
+    # Temporarily disable scheduler refresh to test
+    # bell_scheduler.refresh_schedule()
     return event
 
 @router.delete("/events/{event_id}")

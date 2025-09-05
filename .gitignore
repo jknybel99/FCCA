@@ -41,15 +41,35 @@ logs/
 static/sounds/*.mp3
 static/sounds/*.wav
 static/sounds/*.aac
+static/sounds/*.ogg
+static/sounds/*.flac
 !static/sounds/sample_*
+
+# TTS generated files
+static/sounds/tts_*.wav
+static/sounds/tts_*.mp3
 
 # Large model files
 backend/piper/*.onnx
 backend/piper/models/
+backend/piper/voices/
 
 # Backup files
 backups/*.zip
+backups/*.tar.gz
+backups/*.sql
 !backups/README.md
+
+# User data and schedules
+backend/bell_system.db
+backend/school_bell_system.db
+backend/*.db
+backend/*.sqlite
+backend/*.sqlite3
+
+# User uploaded content
+backend/static/uploads/
+backend/static/user_content/
 
 # Environment variables
 .env
@@ -100,3 +120,4 @@ migrate_*.py
 add_*.py
 update_*.py
 setup_*.py
+!setup_sample_data.py

@@ -381,7 +381,7 @@ export default function AudioLibrary() {
                     </TableCell>
                     <TableCell>
                       <Typography variant="body2">
-                        {file.duration ? `${Math.round(file.duration / 60)}:${(file.duration % 60).toString().padStart(2, '0')}` : '-'}
+                        {file.duration ? `${Math.floor(file.duration / 60)}:${(file.duration % 60).toString().padStart(2, '0')}` : '-'}
                       </Typography>
                     </TableCell>
                     <TableCell>

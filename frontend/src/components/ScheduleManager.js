@@ -345,6 +345,10 @@ export default function ScheduleManager() {
         repeat_tag: firstEvent.repeat_tag || '',
         is_active: firstEvent.is_active
       });
+      
+      // Set the selected schedule day to show which day this event is on
+      setSelectedScheduleDay(firstEvent.schedule_day.id);
+      
       setEventDialogOpen(true);
     }
   };
@@ -369,7 +373,7 @@ export default function ScheduleManager() {
           event.time === editingEvent.time &&
           event.sound_id === editingEvent.sound_id &&
           event.description === editingEvent.description &&
-          event.repeat_tag === editingEvent.repeat_tag
+          (event.repeat_tag || '') === (editingEvent.repeat_tag || '')
         );
         
         console.log('Found event instance:', eventInstance);
@@ -377,6 +381,7 @@ export default function ScheduleManager() {
         if (eventInstance) {
           // Update with the new form values
           const updateData = {
+            time: eventForm.time.format('HH:mm:ss'),
             sound_id: eventForm.sound_id || null,
             tts_text: eventForm.tts_text || null,
             description: eventForm.description,
@@ -387,8 +392,11 @@ export default function ScheduleManager() {
           console.log('Updating event:', eventInstance.id, 'with data:', updateData);
           
           return api.updateBellEvent(eventInstance.id, updateData);
+        } else {
+          console.error('No event instance found for day:', day);
+          console.error('Available events for this day:', events.filter(e => e.schedule_day && e.schedule_day.id === day.id));
+          return Promise.reject(new Error(`No event instance found for day ${day.id}`));
         }
-        return Promise.resolve();
       });
       
       console.log('All update promises:', updatePromises);
@@ -411,7 +419,7 @@ export default function ScheduleManager() {
     } catch (error) {
       console.error('Error updating event:', error);
       console.error('Error details:', error.response?.data || error.message);
-      showSnackbar('Error updating event', 'error');
+      showSnackbar(`Error updating event: ${error.message}`, 'error');
     }
   };
 
@@ -1620,7 +1628,7 @@ export default function ScheduleManager() {
               onChange={(e) => setSelectedScheduleDay(e.target.value)}
               label="Schedule Day"
               disabled={editingEvent}
-              helperText={editingEvent ? "Event will be updated across all days" : ""}
+              helperText={editingEvent ? `Event is scheduled on: ${editingEvent.days.map(day => getDayName(day.day_of_week)).join(', ')}` : ""}
             >
               {scheduleDays.map((day) => (
                 <MenuItem key={day.id} value={day.id}>

@@ -128,6 +128,11 @@ def get_bell_event(db: Session, event_id: int):
 def update_bell_event(db: Session, event_id: int, event_update: dict):
     event = db.query(models.BellEvent).filter(models.BellEvent.id == event_id).first()
     if event:
+        # Convert time string to time object if provided
+        if 'time' in event_update and isinstance(event_update['time'], str):
+            from datetime import datetime
+            event_update['time'] = datetime.strptime(event_update['time'], "%H:%M:%S").time()
+        
         for key, value in event_update.items():
             setattr(event, key, value)
         db.commit()

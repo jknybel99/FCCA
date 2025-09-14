@@ -8,6 +8,7 @@ A comprehensive school bell scheduling system with automated scheduling, audio m
 - **Schedule Management**: Create and manage bell schedules (Admin only)
 - **Audio Library**: Upload and manage audio files (Admin only)
 - **TTS Manager**: Text-to-speech functionality (Admin only)
+- **Paging System**: Live audio announcements with push-to-talk functionality
 - **Calendar View**: Monthly schedule overview
 - **Backup Management**: System backup and restore (Admin only)
 - **System Monitoring**: CPU, RAM, storage, and uptime stats
@@ -115,7 +116,9 @@ npm start
 
 ```
 ├── backend/
-│   ├── api/           # API endpoints (auth, audio, schedules, etc.)
+│   ├── api/           # API endpoints (auth, audio, schedules, paging, etc.)
+│   │   ├── paging.py  # Paging system endpoints
+│   │   └── ...        # Other API modules
 │   ├── auth/          # Authentication utilities
 │   ├── services/      # Business logic services
 │   ├── models.py      # Database models (User, Schedule, Audio, etc.)
@@ -124,10 +127,12 @@ npm start
 │   ├── main.py        # FastAPI application
 │   ├── backup_system.py # Backup and restore functionality
 │   ├── crud.py        # Database CRUD operations
-│   └── static/        # Static files (audio, images)
+│   └── static/        # Static files (audio, recordings)
 ├── frontend/
 │   ├── src/
 │   │   ├── components/ # React components
+│   │   │   ├── PushToTalkButton.js # Push-to-talk interface
+│   │   │   └── ...     # Other components
 │   │   ├── contexts/   # React contexts (AuthContext)
 │   │   ├── api.js      # API client with authentication
 │   │   └── App.js      # Main application with role-based routing
@@ -180,6 +185,16 @@ npm start
 - Text-to-speech generation using Piper TTS
 - Voice customization and audio file export
 
+### **Paging System**
+- **Push-to-Talk Interface**: Real-time audio streaming with spacebar or button control
+- **Audio Input Management**: Automatic detection and configuration of microphones and USB devices
+- **Device Capabilities**: Automatic detection of supported sample rates, bit depths, and channels
+- **Live Audio Streaming**: Direct microphone-to-speaker audio passthrough
+- **Announcement Recording**: Record and save announcements for later playback
+- **Pre-announcement Sounds**: Configurable bell/chime sounds before announcements
+- **Audio Level Monitoring**: Real-time input level visualization
+- **Multi-device Support**: Support for built-in microphones, USB devices, and webcam audio
+
 ### **User Management** (Admin Only)
 - Create and manage user accounts
 - Role assignment and permissions
@@ -200,6 +215,8 @@ npm start
 - **Ports**: Backend runs on port 8000, Frontend on port 3000
 - **TTS Requirements**: Piper TTS requires AVX2/AVX-512 CPU instructions for optimal performance
 - **Authentication**: Default admin account should be changed after first login for security
+- **Paging System**: Requires PulseAudio or ALSA for audio input/output functionality
+- **Audio Devices**: USB microphones and webcams are automatically detected and preferred over built-in audio
 
 ## 🔧 **Troubleshooting**
 
@@ -219,6 +236,25 @@ If you experience problems with the TTS Manager:
 1. Ensure the backend is running on port 8000
 2. Check database contains the users table
 3. Verify JWT secret key configuration
+
+### **Paging System Issues**
+If you experience problems with the paging system:
+1. **Audio Input Not Working**: 
+   - Check if PulseAudio is running: `pulseaudio --check`
+   - Verify microphone permissions and device access
+   - Try different input devices from the settings dialog
+2. **No Audio Devices Detected**:
+   - Restart PulseAudio: `pulseaudio -k && pulseaudio --start`
+   - Check ALSA devices: `arecord -l`
+   - Ensure USB devices are properly connected
+3. **Push-to-Talk Not Responding**:
+   - Check browser microphone permissions
+   - Verify spacebar key events are not blocked by other applications
+   - Try using mouse/touch controls instead of keyboard
+4. **Audio Quality Issues**:
+   - Adjust sample rate and bit depth in device settings
+   - Use recommended settings for your specific device
+   - Check for audio feedback loops and adjust volume levels
 
 ## 🤝 **Contributing**
 

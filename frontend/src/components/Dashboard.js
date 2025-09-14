@@ -15,8 +15,16 @@ import {
   TextField,
   Alert,
   LinearProgress,
-  Snackbar
+  Snackbar,
+  List,
+  ListItem,
+  CircularProgress,
+  ListItemText,
+  ListItemSecondaryAction,
+  InputAdornment,
+  Paper
 } from '@mui/material';
+import PushToTalkButton from './PushToTalkButton';
 import {
   PlayArrow,
   Pause,
@@ -32,7 +40,15 @@ import {
   Memory,
   Storage,
   Folder,
-  Timer
+  Timer,
+  Mic,
+  History,
+  Search,
+  AccessTime,
+  FiberManualRecord as FiberManualRecordIcon,
+  Stop,
+  Radio,
+  RadioButtonUnchecked
 } from '@mui/icons-material';
 import dayjs from 'dayjs';
 import api from '../api';
@@ -53,6 +69,36 @@ const Dashboard = () => {
   const [backupStatus, setBackupStatus] = useState(null);
   const [audioStats, setAudioStats] = useState(null);
   const [systemStats, setSystemStats] = useState(null);
+  
+  // Push-to-talk system state
+  const [isPushToTalkActive, setIsPushToTalkActive] = useState(false);
+  const [pushToTalkCountdown, setPushToTalkCountdown] = useState(0);
+  const [isPushToTalkStreaming, setIsPushToTalkStreaming] = useState(false);
+  const [isPushToTalkLoading, setIsPushToTalkLoading] = useState(false);
+  
+  // Recording system state
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingName, setRecordingName] = useState('');
+  const [showRecordingNameDialog, setShowRecordingNameDialog] = useState(false);
+  const [playBellBeforeRecording, setPlayBellBeforeRecording] = useState(false);
+  
+  // Previous announcements state
+  const [announcements, setAnnouncements] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [announcementsPage, setAnnouncementsPage] = useState(1);
+  const [announcementsPerPage] = useState(10);
+  const [showAnnouncementsDialog, setShowAnnouncementsDialog] = useState(false);
+  
+  // Paging system state
+  const [isPagingLoading, setIsPagingLoading] = useState(false);
+  const [pagingStatus, setPagingStatus] = useState({
+    is_recording: false,
+    is_live_streaming: false
+  });
+  const [showPagingSelection, setShowPagingSelection] = useState(false);
+  const [pagingMode, setPagingMode] = useState(null);
+  const [pagingDialogOpen, setPagingDialogOpen] = useState(false);
+  const [pagingCountdown, setPagingCountdown] = useState(0);
 
 
 
@@ -77,6 +123,7 @@ const Dashboard = () => {
     fetchBackupStatus();
     fetchAudioStats();
     fetchSystemStats();
+    loadAnnouncements();
 
     return () => {
       clearInterval(timeInterval);
@@ -85,6 +132,41 @@ const Dashboard = () => {
       // setSnackbar({ open: false, message: '', severity: 'info' });
     };
   }, []);
+
+  // Countdown effect for push-to-talk
+  useEffect(() => {
+    let countdownInterval;
+    if (pushToTalkCountdown > 0 && isPushToTalkActive) {
+      countdownInterval = setInterval(() => {
+        setPushToTalkCountdown(prev => {
+          if (prev <= 1) {
+            // Countdown finished, start streaming
+            startStreamingAfterCountdown();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    
+    return () => {
+      if (countdownInterval) {
+        clearInterval(countdownInterval);
+      }
+    };
+  }, [pushToTalkCountdown, isPushToTalkActive]);
+
+  const startStreamingAfterCountdown = async () => {
+    try {
+      await api.pushToTalkStream();
+      setIsPushToTalkStreaming(true);
+      showSnackbar('Live streaming started - you can now speak', 'success');
+    } catch (error) {
+      console.error('Error starting streaming after countdown:', error);
+      showSnackbar(`Failed to start streaming: ${error.message || error}`, 'error');
+      setIsPushToTalkActive(false);
+    }
+  };
 
   const fetchNextEvent = async () => {
     try {
@@ -288,6 +370,267 @@ const Dashboard = () => {
     }
     return <Schedule />;
   };
+
+  // Paging system functions
+  const loadAnnouncements = async (page = 1) => {
+    try {
+      const result = await api.getAnnouncementHistory(page * announcementsPerPage);
+      setAnnouncements(result.announcements || []);
+    } catch (error) {
+      console.error('Error loading announcements:', error);
+    }
+  };
+
+  const handlePagingButton = () => {
+    setShowPagingSelection(true);
+  };
+
+  const handlePagingModeSelection = (mode) => {
+    setShowPagingSelection(false);
+    setPagingMode(mode);
+    setPagingDialogOpen(true);
+    
+    // For recording mode, don't start countdown - show manual controls
+    if (mode === 'record') {
+      setPagingCountdown(0); // No countdown for recording
+    } else if (mode === 'live') {
+      setPagingCountdown(3);
+      // Start countdown for live paging - but don't close dialog
+      const countdownInterval = setInterval(() => {
+        setPagingCountdown(prev => {
+          if (prev <= 1) {
+            clearInterval(countdownInterval);
+            // Don't close dialog - let user control manually
+            setPagingCountdown(0); // Reset countdown to show manual controls
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    // For browse mode, no countdown needed
+  };
+
+  const requestMicrophonePermission = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Stop the stream immediately - we just needed permission
+      stream.getTracks().forEach(track => track.stop());
+      return true;
+    } catch (error) {
+      console.error('Microphone permission denied:', error);
+      return false;
+    }
+  };
+
+  // Push-to-talk functions
+  const startPushToTalk = async () => {
+    setIsPushToTalkLoading(true);
+    try {
+      // Request microphone permission first
+      const hasPermission = await requestMicrophonePermission();
+      if (!hasPermission) {
+        showSnackbar('Microphone access is required for paging. Please allow microphone access and try again.', 'error');
+        return;
+      }
+      
+      // Start push-to-talk with bell and countdown
+      await api.pushToTalkStart();
+      setIsPushToTalkActive(true);
+      setPushToTalkCountdown(3);
+      showSnackbar('Push-to-talk started - bell playing, countdown beginning', 'success');
+    } catch (error) {
+      console.error('Error starting push-to-talk:', error);
+      showSnackbar(`Failed to start push-to-talk: ${error.message || error}`, 'error');
+    } finally {
+      setIsPushToTalkLoading(false);
+    }
+  };
+
+  const stopPushToTalk = async () => {
+    setIsPushToTalkLoading(true);
+    try {
+      if (isPushToTalkStreaming) {
+        await api.pushToTalkStop();
+        setIsPushToTalkStreaming(false);
+        showSnackbar('Push-to-talk stopped', 'success');
+      }
+      setIsPushToTalkActive(false);
+      setPushToTalkCountdown(0);
+    } catch (error) {
+      console.error('Error stopping push-to-talk:', error);
+      showSnackbar(`Failed to stop push-to-talk: ${error.message || error}`, 'error');
+    } finally {
+      setIsPushToTalkLoading(false);
+    }
+  };
+
+  // Recording functions
+  const startRecording = async () => {
+    setIsPushToTalkLoading(true);
+    try {
+      // Request microphone permission first
+      const hasPermission = await requestMicrophonePermission();
+      if (!hasPermission) {
+        showSnackbar('Microphone access is required for recording. Please allow microphone access and try again.', 'error');
+        return;
+      }
+      
+      // Get the current audio settings including the selected input device
+      const settings = await api.getAudioSettings();
+      const deviceSettings = {
+        device_id: settings.input || 'default',
+        sample_rate: 44100,
+        bit_depth: 16,
+        channels: 1
+      };
+      
+      console.log('Starting recording with settings:', deviceSettings);
+      await api.startRecording(deviceSettings, 0, playBellBeforeRecording);
+      setIsRecording(true);
+      showSnackbar('Recording started successfully', 'success');
+    } catch (error) {
+      console.error('Error starting recording:', error);
+      showSnackbar(`Failed to start recording: ${error.response?.data?.detail || error.message || 'Unknown error'}`, 'error');
+    } finally {
+      setIsPushToTalkLoading(false);
+    }
+  };
+
+  const stopRecording = async (name = null) => {
+    if (name === null) {
+      // Show naming dialog if no name provided
+      console.log('Opening recording name dialog');
+      setShowRecordingNameDialog(true);
+      return;
+    }
+
+    try {
+      setIsPushToTalkLoading(true);
+      console.log('Stopping recording with name:', name);
+      
+      // Always try to stop recording, even if there's an error
+      try {
+        await api.stopRecording(name);
+        showSnackbar('Recording saved successfully', 'success');
+      } catch (error) {
+        console.error('Error stopping recording:', error);
+        showSnackbar(`Warning: ${error.response?.data?.detail || error.message || 'Recording stopped but may not have saved properly'}`, 'warning');
+      }
+      
+      // Update UI state regardless of API success
+      setIsRecording(false);
+      
+      try {
+        // Refresh the recordings list
+        const recordings = await api.getAnnouncementHistory();
+        setRecordings(recordings);
+      } catch (error) {
+        console.error('Error refreshing recordings:', error);
+        // Don't show error to user for this non-critical operation
+      }
+    } catch (error) {
+      console.error('Unexpected error in stopRecording:', error);
+      showSnackbar('An unexpected error occurred while stopping recording', 'error');
+    } finally {
+      setIsPushToTalkLoading(false);
+      setShowRecordingNameDialog(false);
+      setRecordingName('');
+    }
+  };
+
+  const confirmStopRecording = async () => {
+    setIsPagingLoading(true);
+    try {
+      // Pass the recording name to stopRecording
+      // stopRecording will handle the API call and UI updates
+      const name = recordingName || `Recording ${new Date().toLocaleString()}`;
+      await stopRecording(name);
+      
+      // Update paging status
+      setPagingStatus(prev => ({ ...prev, is_recording: false }));
+      
+      // Reload announcements to show the new recording
+      // Note: stopRecording already refreshes the recordings list
+      // so we don't need to call loadAnnouncements() here
+    } catch (error) {
+      console.error('Error stopping recording:', error);
+      showSnackbar(`Failed to stop recording: ${error.message || error}`, 'error');
+    } finally {
+      setIsPagingLoading(false);
+    }
+  };
+
+  const startLiveStreamAfterCountdown = async () => {
+    try {
+      await api.startLiveStream();
+      setPagingStatus(prev => ({ ...prev, is_live_streaming: true }));
+      setPagingDialogOpen(false);
+      showSnackbar('Live streaming started successfully', 'success');
+    } catch (error) {
+      console.error('Error starting live stream after countdown:', error);
+      showSnackbar(`Failed to start live stream: ${error.message || error}`, 'error');
+      setPagingDialogOpen(false);
+    }
+  };
+
+  const stopLiveStream = async () => {
+    setIsPagingLoading(true);
+    try {
+      await api.stopLiveStream();
+      setPagingStatus(prev => ({ ...prev, is_live_streaming: false }));
+      showSnackbar('Live streaming stopped successfully', 'success');
+    } catch (error) {
+      console.error('Error stopping live stream:', error);
+      showSnackbar(`Failed to stop live stream: ${error.message || error}`, 'error');
+    } finally {
+      setIsPagingLoading(false);
+    }
+  };
+
+  const stopPlayback = async () => {
+    try {
+      await api.stopPlayback();
+      showSnackbar('Playback stopped', 'info');
+    } catch (error) {
+      console.error('Error stopping playback:', error);
+      showSnackbar(`Failed to stop playback: ${error.message || error}`, 'error');
+    }
+  };
+
+  const playAnnouncement = async (announcementId) => {
+    try {
+      await api.playAnnouncement(announcementId);
+      showSnackbar('Playing announcement', 'success');
+    } catch (error) {
+      console.error('Error playing announcement:', error);
+      showSnackbar(`Failed to play announcement: ${error.message || error}`, 'error');
+    }
+  };
+
+  const handlePlayPreviousAnnouncements = () => {
+    setShowPagingSelection(false);
+    // Open the paging dialog in "browse" mode
+    setPagingMode('browse');
+    setPagingDialogOpen(true);
+  };
+
+  const formatDuration = (seconds) => {
+    if (!seconds) return '0:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleString();
+  };
+
+  const filteredAnnouncements = announcements.filter(announcement =>
+    announcement.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    announcement.description.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
     <Box sx={{ p: 2 }}>
@@ -640,6 +983,15 @@ const Dashboard = () => {
                 >
                   {isTestingSound ? 'Testing...' : 'Test Sound'}
                 </Button>
+                <Button
+                  variant="outlined"
+                  color="primary"
+                  startIcon={<Mic />}
+                  onClick={() => setPagingDialogOpen(true)}
+                  disabled={isPagingLoading}
+                >
+                  Page System
+                </Button>
                 <IconButton
                   onClick={() => setSettingsOpen(true)}
                   color="primary"
@@ -653,6 +1005,7 @@ const Dashboard = () => {
 
 
       </Grid>
+
 
       {/* Settings Dialog */}
       <Dialog open={settingsOpen} onClose={() => setSettingsOpen(false)}>
@@ -678,21 +1031,261 @@ const Dashboard = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Snackbar for user feedback */}
+      {/* Previous Announcements Dialog */}
+      <Dialog 
+        open={showAnnouncementsDialog} 
+        maxWidth="md" 
+        fullWidth
+        onClose={() => setShowAnnouncementsDialog(false)}
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <History />
+            <Typography variant="h6">
+              Previous Announcements
+            </Typography>
+          </Box>
+        </DialogTitle>
+        
+        <DialogContent>
+          <TextField
+            fullWidth
+            placeholder="Search announcements..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            sx={{ mb: 2 }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Search />
+                </InputAdornment>
+              ),
+            }}
+          />
+          
+          <Box sx={{ maxHeight: '300px', overflow: 'auto' }}>
+            {filteredAnnouncements.length > 0 ? (
+              <List dense>
+                {filteredAnnouncements.slice((announcementsPage - 1) * announcementsPerPage, announcementsPage * announcementsPerPage).map((announcement) => (
+                  <ListItem key={announcement.id} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, mb: 1 }}>
+                    <ListItemText
+                      primary={announcement.name || 'Unnamed Announcement'}
+                      secondary={
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">
+                            {new Date(announcement.created_at).toLocaleString()}
+                          </Typography>
+                          {announcement.description && (
+                            <Typography variant="body2" color="text.secondary">
+                              {announcement.description}
+                            </Typography>
+                          )}
+                        </Box>
+                      }
+                    />
+                    <ListItemSecondaryAction>
+                      <Box sx={{ display: 'flex', gap: 1 }}>
+                        <IconButton
+                          edge="end"
+                          color="primary"
+                          onClick={() => playAnnouncement(announcement.id)}
+                          disabled={isPushToTalkLoading}
+                        >
+                          <PlayArrow />
+                        </IconButton>
+                        <IconButton
+                          edge="end"
+                          color="error"
+                          onClick={() => stopPlayback()}
+                          disabled={isPushToTalkLoading}
+                        >
+                          <Stop />
+                        </IconButton>
+                      </Box>
+                    </ListItemSecondaryAction>
+                  </ListItem>
+                ))}
+              </List>
+            ) : (
+              <Box sx={{ textAlign: 'center', py: 4 }}>
+                <Typography variant="body2" color="text.secondary">
+                  {searchTerm ? 'No announcements match your search' : 'No previous announcements'}
+                </Typography>
+              </Box>
+            )}
+          </Box>
+          
+          {/* Pagination Controls */}
+          {filteredAnnouncements.length >= announcementsPerPage && (
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 2, mt: 2 }}>
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => setAnnouncementsPage(prev => Math.max(1, prev - 1))}
+                disabled={announcementsPage === 1}
+              >
+                Previous
+              </Button>
+              <Typography variant="body2" color="text.secondary">
+                Page {announcementsPage} of {Math.ceil(filteredAnnouncements.length / announcementsPerPage)}
+              </Typography>
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => setAnnouncementsPage(prev => Math.min(Math.ceil(filteredAnnouncements.length / announcementsPerPage), prev + 1))}
+                disabled={announcementsPage >= Math.ceil(filteredAnnouncements.length / announcementsPerPage)}
+              >
+                Next
+              </Button>
+            </Box>
+          )}
+        </DialogContent>
+        
+        <DialogActions>
+          <Button onClick={() => setShowAnnouncementsDialog(false)}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Recording Name Dialog */}
+      <Dialog 
+        open={showRecordingNameDialog} 
+        maxWidth="sm" 
+        fullWidth
+        onClose={() => setShowRecordingNameDialog(false)}
+      >
+        <DialogTitle>
+          <Typography variant="h6">
+            Name Your Recording
+          </Typography>
+        </DialogTitle>
+        
+        <DialogContent>
+          <TextField
+            fullWidth
+            label="Recording Name"
+            value={recordingName}
+            onChange={(e) => setRecordingName(e.target.value)}
+            placeholder="Enter a name for your recording..."
+            sx={{ mt: 2 }}
+          />
+        </DialogContent>
+        
+        <DialogActions>
+          <Button onClick={() => setShowRecordingNameDialog(false)}>
+            Cancel
+          </Button>
+          <Button 
+            variant="contained" 
+            onClick={confirmStopRecording}
+            disabled={isPushToTalkLoading}
+          >
+            Save Recording
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Paging System Dialog */}
+      <Dialog 
+        open={pagingDialogOpen} 
+        maxWidth="md" 
+        fullWidth
+        onClose={() => setPagingDialogOpen(false)}
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Mic />
+            <Typography variant="h6">
+              Paging System
+            </Typography>
+          </Box>
+        </DialogTitle>
+        
+        <DialogContent>
+          <Box sx={{ py: 2 }}>
+            <PushToTalkButton 
+              onStatusChange={(status) => {
+                setPagingStatus(prev => ({
+                  ...prev,
+                  is_live_streaming: status.isStreaming || false
+                }));
+              }}
+            />
+            
+            {/* Additional Controls */}
+            <Box sx={{ mt: 4 }}>
+              <Grid container spacing={2} justifyContent="center" alignItems="center">
+                {isRecording ? (
+                  <>
+                    <Grid item>
+                      <Button
+                        variant="contained"
+                        color="error"
+                        startIcon={<Stop />}
+                        onClick={() => stopRecording()}
+                        sx={{
+                          animation: 'pulse 1.5s infinite',
+                          '@keyframes pulse': {
+                            '0%': { opacity: 1 },
+                            '50%': { opacity: 0.7 },
+                            '100%': { opacity: 1 }
+                          }
+                        }}
+                      >
+                        Stop Recording
+                      </Button>
+                    </Grid>
+                    <Grid item>
+                      <Typography variant="body2" color="error">
+                        <FiberManualRecordIcon sx={{ animation: 'blink 1.5s infinite', fontSize: '1rem' }} />
+                        Recording in progress...
+                      </Typography>
+                    </Grid>
+                  </>
+                ) : (
+                  <>
+                    <Grid item>
+                      <Button
+                        variant="contained"
+                        color="primary"
+                        startIcon={<Mic />}
+                        onClick={startRecording}
+                        disabled={pagingStatus.is_live_streaming}
+                      >
+                        Record Message
+                      </Button>
+                    </Grid>
+                    <Grid item>
+                      <Button
+                        variant="outlined"
+                        startIcon={<History />}
+                        onClick={() => setShowAnnouncementsDialog(true)}
+                      >
+                        Previous Announcements
+                      </Button>
+                    </Grid>
+                  </>
+                )}
+              </Grid>
+            </Box>
+          </Box>
+        </DialogContent>
+        
+        <DialogActions>
+          <Button onClick={() => setPagingDialogOpen(false)}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Snackbar for notifications */}
       <Snackbar
         open={snackbar.open}
-        autoHideDuration={4000}
+        autoHideDuration={6000}
         onClose={() => setSnackbar({ ...snackbar, open: false })}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert 
-          onClose={() => setSnackbar({ ...snackbar, open: false })} 
-          severity={snackbar.severity}
-          sx={{ width: '100%' }}
-        >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
+        message={snackbar.message}
+      />
     </Box>
   );
 };

@@ -584,6 +584,62 @@ def stop_all_audio():
     
     return {"message": "Stopped all audio"}
 
+def play_audio_file_with_volume(file_path: str, volume: int = 100):
+    """Play audio file with specified volume"""
+    try:
+        import subprocess
+        
+        # Stop any currently playing audio first
+        stop_all_audio()
+        
+        if not os.path.exists(file_path):
+            print(f"Audio file not found: {file_path}")
+            return False
+        
+        # Calculate volume for different players
+        if volume != 100:
+            # Try aplay with volume control via amixer (if available)
+            try:
+                # Use paplay with volume control if available
+                normalized_volume = max(0, min(65536, int(65536 * volume / 100)))
+                cmd = ['paplay', '--volume', str(normalized_volume), file_path]
+                process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                print(f"Playing {file_path} with paplay at {volume}% volume")
+                return True
+            except FileNotFoundError:
+                pass
+        
+        # Fallback to aplay without volume control
+        try:
+            cmd = ['aplay', file_path]
+            process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print(f"Playing {file_path} with aplay")
+            return True
+        except FileNotFoundError:
+            pass
+        
+        # Final fallback to ffplay
+        try:
+            cmd = ['ffplay', '-nodisp', '-autoexit', file_path]
+            if volume != 100:
+                cmd.extend(['-volume', str(volume)])
+            process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print(f"Playing {file_path} with ffplay at {volume}% volume")
+            return True
+        except FileNotFoundError:
+            pass
+        
+        print(f"No audio player available to play {file_path}")
+        return False
+        
+    except Exception as e:
+        print(f"Error playing audio file {file_path}: {e}")
+        return False
+
+def play_audio_file(file_path: str):
+    """Play audio file with default volume"""
+    return play_audio_file_with_volume(file_path, 100)
+
 @router.get("/categories/stats")
 def get_sound_categories_stats(db: Session = Depends(get_db)):
     """Get statistics about sound categories"""

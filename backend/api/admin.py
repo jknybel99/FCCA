@@ -24,7 +24,9 @@ def get_admin_settings(request: Request, db: Session = Depends(get_db)):
     setting_keys = [
         'school_name', 'school_logo', 'contact_email', 'contact_phone',
         'footer_text', 'system_timezone', 'auto_backup', 'backup_frequency',
-        'max_file_size', 'allowed_file_types', 'ntp_enabled', 'ntp_servers', 'ntp_sync_interval'
+        'max_file_size', 'allowed_file_types', 'ntp_enabled', 'ntp_servers', 'ntp_sync_interval',
+        'default_audio_input_device', 'paging_pre_sound_id', 'paging_pre_sound_volume',
+        'audio_audio_sampleRate', 'audio_audio_bitDepth', 'audio_audio_channels', 'audio_audio_bufferSize'
     ]
     
     for key in setting_keys:
@@ -69,6 +71,20 @@ def get_admin_settings(request: Request, db: Session = Depends(get_db)):
                 settings['ntpServers'] = value
             elif key == 'ntp_sync_interval':
                 settings['ntpSyncInterval'] = value
+            elif key == 'default_audio_input_device':
+                settings['defaultAudioInputDevice'] = value
+            elif key == 'paging_pre_sound_id':
+                settings['pagingPreSoundId'] = value
+            elif key == 'paging_pre_sound_volume':
+                settings['pagingPreSoundVolume'] = value
+            elif key == 'audio_audio_sampleRate':
+                settings['audioSampleRate'] = value
+            elif key == 'audio_audio_bitDepth':
+                settings['audioBitDepth'] = value
+            elif key == 'audio_audio_channels':
+                settings['audioChannels'] = value
+            elif key == 'audio_audio_bufferSize':
+                settings['audioBufferSize'] = value
             else:
                 settings[key] = value
     
@@ -92,7 +108,15 @@ def save_admin_settings(settings: dict, db: Session = Depends(get_db)):
             'allowedFileTypes': 'allowed_file_types',
             'ntpEnabled': 'ntp_enabled',
             'ntpServers': 'ntp_servers',
-            'ntpSyncInterval': 'ntp_sync_interval'
+            'ntpSyncInterval': 'ntp_sync_interval',
+            'defaultAudioInputDevice': 'default_audio_input_device',
+            'pagingPreSoundId': 'paging_pre_sound_id',
+            'pagingPreSoundVolume': 'paging_pre_sound_volume',
+            # Audio settings mappings
+            'audioSampleRate': 'audio_audio_sampleRate',
+            'audioBitDepth': 'audio_audio_bitDepth',
+            'audioChannels': 'audio_audio_channels',
+            'audioBufferSize': 'audio_audio_bufferSize'
         }
         
         for key, value in settings.items():

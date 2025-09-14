@@ -14,7 +14,7 @@ class SoundCreate(SoundBase):
 class Sound(SoundBase):
     id: int
     file_path: str
-    duration: Optional[int] = None
+    duration: Optional[float] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     

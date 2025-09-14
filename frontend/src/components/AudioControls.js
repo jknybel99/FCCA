@@ -20,7 +20,9 @@ import {
   VolumeUp,
   GraphicEq,
   Settings,
-  Save
+  Save,
+  Mic,
+  MusicNote
 } from '@mui/icons-material';
 import api from '../api';
 
@@ -43,10 +45,22 @@ export default function AudioControls() {
     bufferSize: 512
   });
   const [isEnabled, setIsEnabled] = useState(true);
+  
+  // Audio input states
+  const [audioInputs, setAudioInputs] = useState([]);
+  const [selectedInput, setSelectedInput] = useState('');
+  const [isInputEnabled, setIsInputEnabled] = useState(false);
+  
+  // Paging sound states
+  const [availableSounds, setAvailableSounds] = useState([]);
+  const [selectedPagingSound, setSelectedPagingSound] = useState('');
+  const [pagingSoundVolume, setPagingSoundVolume] = useState(80);
 
   useEffect(() => {
     loadAudioSettings();
     detectAudioOutputs();
+    detectAudioInputs();
+    loadAvailableSounds();
   }, []);
 
   const loadAudioSettings = async () => {
@@ -54,16 +68,38 @@ export default function AudioControls() {
       // Load saved settings from backend
       const settings = await api.getAudioSettings();
       if (settings) {
-        setVolume(settings.volume || 100);
-        setMasterVolume(settings.masterVolume || 100);
-        setEqSettings(settings.eq || {
-          low: 0, mid: 0, high: 0, bass: 0, treble: 0
+        setVolume(parseInt(settings.volume) || 100);
+        setMasterVolume(parseInt(settings.masterVolume) || 100);
+        setEqSettings({
+          low: parseInt(settings.eq?.low) || 0,
+          mid: parseInt(settings.eq?.mid) || 0,
+          high: parseInt(settings.eq?.high) || 0,
+          bass: parseInt(settings.eq?.bass) || 0,
+          treble: parseInt(settings.eq?.treble) || 0
         });
         setAudioSettings(settings.audio || {
           sampleRate: 44100, bitDepth: 16, channels: 2, bufferSize: 512
         });
         setSelectedOutput(settings.output || '');
         setIsEnabled(settings.enabled !== false);
+        setSelectedInput(settings.input || '');
+        setIsInputEnabled(settings.inputEnabled !== false);
+        setSelectedPagingSound(settings.pagingSound || '');
+        setPagingSoundVolume(parseInt(settings.pagingSoundVolume) || 80);
+      }
+      
+      // Also load admin settings for audio input device and paging sound
+      const adminSettings = await api.getAdminSettings();
+      if (adminSettings) {
+        if (adminSettings.defaultAudioInputDevice) {
+          setSelectedInput(adminSettings.defaultAudioInputDevice);
+        }
+        if (adminSettings.pagingPreSoundId) {
+          setSelectedPagingSound(adminSettings.pagingPreSoundId);
+        }
+        if (adminSettings.pagingPreSoundVolume) {
+          setPagingSoundVolume(parseInt(adminSettings.pagingPreSoundVolume) || 80);
+        }
       }
     } catch (error) {
       console.error('Error loading audio settings:', error);
@@ -126,10 +162,26 @@ export default function AudioControls() {
         eq: eqSettings,
         audio: audioSettings,
         output: selectedOutput,
+        input: selectedInput,
+        inputEnabled: isInputEnabled,
+        pagingSound: selectedPagingSound,
+        pagingSoundVolume: pagingSoundVolume,
         enabled: isEnabled
       };
       
       await api.saveAudioSettings(settings);
+      
+      // Also save the input device, paging sound, and audio settings to admin settings
+      await api.saveAdminSettings({ 
+        defaultAudioInputDevice: selectedInput,
+        pagingPreSoundId: selectedPagingSound,
+        pagingPreSoundVolume: pagingSoundVolume,
+        audioSampleRate: audioSettings.sampleRate,
+        audioBitDepth: audioSettings.bitDepth,
+        audioChannels: audioSettings.channels,
+        audioBufferSize: audioSettings.bufferSize
+      });
+      
       alert('Audio settings saved successfully!');
       
       // Refresh settings after saving
@@ -156,11 +208,40 @@ export default function AudioControls() {
     }));
   };
 
+  const detectAudioInputs = async () => {
+    try {
+      const response = await api.getAudioInputDevices();
+      if (response && Array.isArray(response)) {
+        setAudioInputs(response);
+        // Auto-select first input if none selected
+        if (!selectedInput && response.length > 0) {
+          setSelectedInput(response[0].id);
+        }
+      }
+    } catch (error) {
+      console.error('Error detecting audio inputs:', error);
+    }
+  };
+
+  const loadAvailableSounds = async () => {
+    try {
+      const response = await api.getAudioFiles();
+      if (response && Array.isArray(response)) {
+        const allSounds = response.filter(sound => 
+          sound.type === 'bell' || sound.type === 'music'
+        );
+        setAvailableSounds(allSounds);
+      }
+    } catch (error) {
+      console.error('Error loading available sounds:', error);
+    }
+  };
+
   return (
     <Box>
       <Typography variant="h6" gutterBottom>
         <Settings sx={{ mr: 1, verticalAlign: 'middle' }} />
-        Audio Output Controls
+        Audio Settings
       </Typography>
 
       <Grid container spacing={3}>
@@ -200,6 +281,43 @@ export default function AudioControls() {
           </Card>
         </Grid>
 
+        {/* Audio Input Selection */}
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                <Mic sx={{ mr: 1, verticalAlign: 'middle' }} />
+                Audio Input
+              </Typography>
+              <FormControl fullWidth margin="normal">
+                <InputLabel>Input Device</InputLabel>
+                <Select
+                  value={selectedInput}
+                  onChange={(e) => setSelectedInput(e.target.value)}
+                  label="Input Device"
+                >
+                  {audioInputs.map((input) => (
+                    <MenuItem key={input.id} value={input.id}>
+                      {input.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={isInputEnabled}
+                    onChange={(e) => setIsInputEnabled(e.target.checked)}
+                  />
+                }
+                label="Enable Audio Input"
+                sx={{ mt: 2 }}
+              />
+            </CardContent>
+          </Card>
+        </Grid>
+
         {/* Volume Controls */}
         <Grid item xs={12} md={6}>
           <Card>
@@ -223,6 +341,44 @@ export default function AudioControls() {
               <Slider
                 value={volume}
                 onChange={(e, value) => setVolume(value)}
+                min={0}
+                max={100}
+                valueLabelDisplay="auto"
+              />
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Paging Sound Configuration */}
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                <MusicNote sx={{ mr: 1, verticalAlign: 'middle' }} />
+                Paging Sound
+              </Typography>
+              <FormControl fullWidth margin="normal">
+                <InputLabel>Pre-Announcement Sound</InputLabel>
+                <Select
+                  value={selectedPagingSound}
+                  onChange={(e) => setSelectedPagingSound(e.target.value)}
+                  label="Pre-Announcement Sound"
+                >
+                  <MenuItem value="">
+                    <em>No pre-sound</em>
+                  </MenuItem>
+                  {availableSounds.map((sound) => (
+                    <MenuItem key={sound.id} value={sound.id}>
+                      {sound.name} ({sound.type})
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              
+              <Typography gutterBottom sx={{ mt: 2 }}>Pre-Sound Volume (%)</Typography>
+              <Slider
+                value={pagingSoundVolume}
+                onChange={(e, value) => setPagingSoundVolume(value)}
                 min={0}
                 max={100}
                 valueLabelDisplay="auto"

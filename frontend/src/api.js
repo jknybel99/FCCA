@@ -363,6 +363,11 @@ export default {
     return res.data;
   },
 
+  getAudioInputs: async () => {
+    const res = await axiosInstance.get(`${API}/audio/inputs`);
+    return res.data;
+  },
+
   uploadAudioFile: async (file) => {
     const formData = new FormData();
     formData.append('file', file);
@@ -600,6 +605,133 @@ export default {
   // System Stats
   getSystemStats: async () => {
     const res = await axiosInstance.get(`${API}/admin/system-stats`);
+    return res.data;
+  },
+
+
+  getAnnouncementHistory: async (limit = 20) => {
+    const res = await axiosInstance.get(`${API}/paging/announcements?limit=${limit}`);
+    return res.data;
+  },
+
+  playAnnouncement: async (announcementId) => {
+    const res = await axiosInstance.post(`${API}/paging/announcements/${announcementId}/play`);
+    return res.data;
+  },
+
+  stopPlayback: async () => {
+    const res = await axiosInstance.post(`${API}/paging/stop-playback`);
+    return res.data;
+  },
+
+  startRecording: async (duration = null, playBell = false) => {
+    const params = new URLSearchParams();
+    if (duration) params.append('duration', duration);
+    if (playBell) params.append('play_bell', 'true');
+    const url = `${API}/paging/start-recording${params.toString() ? '?' + params.toString() : ''}`;
+    const res = await axiosInstance.post(url);
+    return res.data;
+  },
+
+  stopRecording: async (name = null) => {
+    const res = await axiosInstance.post(`${API}/paging/stop-recording?name=${name || ''}`);
+    return res.data;
+  },
+
+  startLiveStream: async () => {
+    const res = await axiosInstance.post(`${API}/paging/start-live-stream`);
+    return res.data;
+  },
+
+  startLiveStreamWithCountdown: async () => {
+    const res = await axiosInstance.post(`${API}/paging/start-live-stream-with-countdown`);
+    return res.data;
+  },
+
+  // Push-to-talk functions
+  startPushToTalk: async () => {
+    const res = await axiosInstance.post(`${API}/paging/push-to-talk-start`);
+    return res.data;
+  },
+
+  startPushToTalkStream: async (deviceSettings) => {
+    const res = await axiosInstance.post(`${API}/paging/push-to-talk-stream`, deviceSettings);
+    return res.data;
+  },
+
+  stopPushToTalk: async () => {
+    const res = await axiosInstance.post(`${API}/paging/push-to-talk-stop`);
+    return res.data;
+  },
+
+  // Paging system endpoints
+  getAnnouncementHistory: async (limit = 20) => {
+    const res = await axiosInstance.get(`${API}/paging/announcements?limit=${limit}`);
+    return res.data;
+  },
+  playAnnouncement: async (id) => {
+    const res = await axiosInstance.post(`${API}/paging/announcements/${id}/play`);
+    return res.data;
+  },
+  startRecording: async (deviceSettings = null, duration = 0, playBell = false) => {
+    const requestBody = {
+      device_settings: deviceSettings || {
+        device_id: 'default',
+        sample_rate: 44100,
+        bit_depth: 16,
+        channels: 1
+      },
+      duration,
+      play_bell: playBell
+    };
+    console.log('Sending start-recording request:', requestBody);
+    const res = await axiosInstance.post(`${API}/paging/start-recording`, requestBody);
+    return res.data;
+  },
+  stopRecording: async (name) => {
+    const res = await axiosInstance.post(`${API}/paging/stop-recording`, { name });
+    return res.data;
+  },
+  startLiveStream: async (inputDevice = 'default') => {
+    const res = await axiosInstance.post(`${API}/paging/start-live-stream`, { input_device: inputDevice });
+    return res.data;
+  },
+  stopLiveStream: async () => {
+    const res = await axiosInstance.post(`${API}/paging/stop-live-stream`);
+    return res.data;
+  },
+  getPagingStatus: async () => {
+    const res = await axiosInstance.get(`${API}/paging/status`);
+    return res.data;
+  },
+  getPagingSettings: async () => {
+    const res = await axiosInstance.get(`${API}/paging/settings`);
+    return res.data;
+  },
+  savePagingSettings: async (settings) => {
+    const res = await axiosInstance.post(`${API}/paging/settings`, settings);
+    return res.data;
+  },
+
+  // Enhanced paging endpoints
+  getAudioInputDevices: async () => {
+    const res = await axiosInstance.get(`${API}/paging/input-devices`);
+    return res.data;
+  },
+  getDeviceCapabilities: async (deviceId) => {
+    const res = await axiosInstance.get(`${API}/paging/input-devices/${encodeURIComponent(deviceId)}/capabilities`);
+    return res.data;
+  },
+  startPushToTalk: async () => {
+    const res = await axiosInstance.post(`${API}/paging/push-to-talk-start`);
+    return res.data;
+  },
+  startPushToTalkStream: async (deviceSettings) => {
+    const res = await axiosInstance.post(`${API}/paging/push-to-talk-stream`, deviceSettings);
+    return res.data;
+  },
+  stopPushToTalk: async () => {
+    const res = await axiosInstance.post(`${API}/paging/push-to-talk-stop`);
     return res.data;
   }
 };

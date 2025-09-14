@@ -5,7 +5,7 @@ import os
 import logging
 from datetime import datetime
 
-from api import schedule, sound, tts, admin, audio
+from api import schedule, sound, tts, admin, audio, paging
 from api import audio_editor
 from api import auth
 from services.scheduler import bell_scheduler
@@ -32,11 +32,13 @@ app.include_router(tts.router, prefix="/api/tts", tags=["TTS"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 app.include_router(audio.router, prefix="/api/audio", tags=["Audio"])
 app.include_router(audio_editor.router, prefix="/api/audio-editor", tags=["Audio Editor"])
+app.include_router(paging.router, prefix="/api/paging", tags=["Paging"])
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 
 # Make sure this path matches where your files are actually saved!
 os.makedirs("./static/sounds", exist_ok=True)
 os.makedirs("./static/uploads", exist_ok=True)
+os.makedirs("./static/recordings", exist_ok=True)
 app.mount("/sounds", StaticFiles(directory="./static/sounds"), name="sounds")
 app.mount("/static", StaticFiles(directory="./static"), name="static")
 

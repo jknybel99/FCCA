@@ -93,7 +93,8 @@ const Dashboard = () => {
   const [isPagingLoading, setIsPagingLoading] = useState(false);
   const [pagingStatus, setPagingStatus] = useState({
     is_recording: false,
-    is_live_streaming: false
+    is_live_streaming: false,
+    audio_level: 0
   });
   const [showPagingSelection, setShowPagingSelection] = useState(false);
   const [pagingMode, setPagingMode] = useState(null);
@@ -101,6 +102,16 @@ const Dashboard = () => {
   const [pagingCountdown, setPagingCountdown] = useState(0);
 
 
+
+  // Fetch paging status including audio levels
+  const fetchPagingStatus = async () => {
+    try {
+      const status = await api.getPagingStatus();
+      setPagingStatus(status);
+    } catch (error) {
+      console.error('Error fetching paging status:', error);
+    }
+  };
 
   useEffect(() => {
     // Update time every second
@@ -113,10 +124,18 @@ const Dashboard = () => {
       fetchNextEvent();
     }, 60000);
 
+    // Update paging status (including audio levels) every 200ms when recording/streaming
+    const pagingInterval = setInterval(() => {
+      if (pagingStatus.is_recording || pagingStatus.is_live_streaming || isRecording) {
+        fetchPagingStatus();
+      }
+    }, 200);
+
     // Initial fetch
     fetchNextEvent();
     fetchSystemStatus();
     fetchAudioSettings();
+    fetchPagingStatus();
     fetchAudioOutputs();
     fetchActiveSchedule();
     fetchNtpStatus();
@@ -128,8 +147,7 @@ const Dashboard = () => {
     return () => {
       clearInterval(timeInterval);
       clearInterval(eventInterval);
-      // Close snackbar to prevent memory leaks
-      // setSnackbar({ open: false, message: '', severity: 'info' });
+      clearInterval(pagingInterval);
     };
   }, []);
 
@@ -372,10 +390,11 @@ const Dashboard = () => {
   };
 
   // Paging system functions
-  const loadAnnouncements = async (page = 1) => {
+  const loadAnnouncements = async () => {
     try {
-      const result = await api.getAnnouncementHistory(page * announcementsPerPage);
-      setAnnouncements(result.announcements || []);
+      const response = await api.getAnnouncementHistory();
+      setAnnouncements(response.announcements || []);
+      console.log('Loaded announcements:', response.announcements?.length || 0);
     } catch (error) {
       console.error('Error loading announcements:', error);
     }
@@ -467,33 +486,38 @@ const Dashboard = () => {
 
   // Recording functions
   const startRecording = async () => {
-    setIsPushToTalkLoading(true);
     try {
-      // Request microphone permission first
-      const hasPermission = await requestMicrophonePermission();
-      if (!hasPermission) {
-        showSnackbar('Microphone access is required for recording. Please allow microphone access and try again.', 'error');
-        return;
-      }
-      
-      // Get the current audio settings including the selected input device
-      const settings = await api.getAudioSettings();
-      const deviceSettings = {
-        device_id: settings.input || 'default',
-        sample_rate: 44100,
-        bit_depth: 16,
-        channels: 1
-      };
-      
-      console.log('Starting recording with settings:', deviceSettings);
-      await api.startRecording(deviceSettings, 0, playBellBeforeRecording);
       setIsRecording(true);
-      showSnackbar('Recording started successfully', 'success');
+      await api.startRecording({
+        device_settings: {
+          device_id: 'default',
+          sample_rate: 44100,
+          bit_depth: 16,
+          channels: 1
+        },
+        duration: 60,
+        play_bell: true
+      });
+      
+      // Update paging status and start polling for audio levels
+      setPagingStatus(prev => ({ ...prev, is_recording: true }));
+      
+      // Start immediate polling for audio levels during recording
+      const pollAudioLevels = setInterval(() => {
+        fetchPagingStatus();
+      }, 100); // Poll every 100ms for smooth audio level updates
+      
+      // Store interval ID to clear it later
+      window.audioLevelInterval = pollAudioLevels;
+      
     } catch (error) {
       console.error('Error starting recording:', error);
-      showSnackbar(`Failed to start recording: ${error.response?.data?.detail || error.message || 'Unknown error'}`, 'error');
-    } finally {
-      setIsPushToTalkLoading(false);
+      setIsRecording(false);
+      setSnackbar({
+        open: true,
+        message: 'Failed to start recording',
+        severity: 'error'
+      });
     }
   };
 
@@ -536,28 +560,44 @@ const Dashboard = () => {
       setIsPushToTalkLoading(false);
       setShowRecordingNameDialog(false);
       setRecordingName('');
+      
+      // Clear audio level polling
+      if (window.audioLevelInterval) {
+        clearInterval(window.audioLevelInterval);
+        window.audioLevelInterval = null;
+      }
+      
+      // Update paging status
+      setPagingStatus(prev => ({ ...prev, is_recording: false, audio_level: 0 }));
+      
+      // Reload announcements immediately to show new recording
+      setTimeout(() => {
+        loadAnnouncements();
+      }, 1000); // Wait 1 second for backend to finish saving
     }
   };
 
   const confirmStopRecording = async () => {
-    setIsPagingLoading(true);
+    if (!recordingName.trim()) {
+      setSnackbar({
+        open: true,
+        message: 'Please enter a name for your recording',
+        severity: 'error'
+      });
+      return;
+    }
+    
     try {
-      // Pass the recording name to stopRecording
-      // stopRecording will handle the API call and UI updates
-      const name = recordingName || `Recording ${new Date().toLocaleString()}`;
-      await stopRecording(name);
-      
-      // Update paging status
-      setPagingStatus(prev => ({ ...prev, is_recording: false }));
-      
-      // Reload announcements to show the new recording
-      // Note: stopRecording already refreshes the recordings list
-      // so we don't need to call loadAnnouncements() here
+      await stopRecording(recordingName.trim());
+      setShowRecordingNameDialog(false);
+      setRecordingName('');
     } catch (error) {
-      console.error('Error stopping recording:', error);
-      showSnackbar(`Failed to stop recording: ${error.message || error}`, 'error');
-    } finally {
-      setIsPagingLoading(false);
+      console.error('Error confirming stop recording:', error);
+      setSnackbar({
+        open: true,
+        message: 'Failed to save recording',
+        severity: 'error'
+      });
     }
   };
 
@@ -1241,6 +1281,27 @@ const Dashboard = () => {
                         <FiberManualRecordIcon sx={{ animation: 'blink 1.5s infinite', fontSize: '1rem' }} />
                         Recording in progress...
                       </Typography>
+                    </Grid>
+                    {/* Audio Level Indicator */}
+                    <Grid item xs={12}>
+                      <Box sx={{ mt: 2 }}>
+                        <Typography variant="body2" gutterBottom>
+                          Audio Level: {Math.round(pagingStatus.audio_level || 0)}%
+                        </Typography>
+                        <LinearProgress 
+                          variant="determinate" 
+                          value={pagingStatus.audio_level || 0}
+                          sx={{ 
+                            height: 8, 
+                            borderRadius: 4,
+                            backgroundColor: 'rgba(0,0,0,0.1)',
+                            '& .MuiLinearProgress-bar': {
+                              backgroundColor: pagingStatus.audio_level > 80 ? '#f44336' : 
+                                             pagingStatus.audio_level > 50 ? '#ff9800' : '#4caf50'
+                            }
+                          }}
+                        />
+                      </Box>
                     </Grid>
                   </>
                 ) : (

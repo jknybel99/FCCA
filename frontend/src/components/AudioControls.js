@@ -77,8 +77,11 @@ export default function AudioControls() {
           bass: parseInt(settings.eq?.bass) || 0,
           treble: parseInt(settings.eq?.treble) || 0
         });
-        setAudioSettings(settings.audio || {
-          sampleRate: 44100, bitDepth: 16, channels: 2, bufferSize: 512
+        setAudioSettings({
+          sampleRate: parseInt(settings.audio?.sampleRate) || 44100,
+          bitDepth: parseInt(settings.audio?.bitDepth) || 16,
+          channels: parseInt(settings.audio?.channels) || 2,
+          bufferSize: parseInt(settings.audio?.bufferSize) || 512
         });
         setSelectedOutput(settings.output || '');
         setIsEnabled(settings.enabled !== false);
@@ -99,6 +102,16 @@ export default function AudioControls() {
         }
         if (adminSettings.pagingPreSoundVolume) {
           setPagingSoundVolume(parseInt(adminSettings.pagingPreSoundVolume) || 80);
+        }
+        // Override audio settings with admin settings if they exist
+        if (adminSettings.audioSampleRate || adminSettings.audioBitDepth || 
+            adminSettings.audioChannels || adminSettings.audioBufferSize) {
+          setAudioSettings(prev => ({
+            sampleRate: parseInt(adminSettings.audioSampleRate) || prev.sampleRate,
+            bitDepth: parseInt(adminSettings.audioBitDepth) || prev.bitDepth,
+            channels: parseInt(adminSettings.audioChannels) || prev.channels,
+            bufferSize: parseInt(adminSettings.audioBufferSize) || prev.bufferSize
+          }));
         }
       }
     } catch (error) {

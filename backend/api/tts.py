@@ -47,7 +47,7 @@ VOICES_CACHE_TIMESTAMP = None
 CACHE_DURATION = 3600  # 1 hour cache
 
 # Mock TTS mode for testing (when Piper is not compatible)
-MOCK_TTS_MODE = True  # Set to False to try real Piper
+MOCK_TTS_MODE = False  # Set to False to try real Piper
 
 def fetch_all_voices() -> dict:
     """Fetch all available voices from the Piper TTS repository"""

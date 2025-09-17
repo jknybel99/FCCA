@@ -79,10 +79,13 @@ async def startup_event():
             
             logger.info("Default schedule created")
         
-        # Set default system settings
-        crud.set_system_setting(db, "system_timezone", "America/Chicago", "System timezone")
-        crud.set_system_setting(db, "auto_backup", "True", "Enable automatic backups")
-        crud.set_system_setting(db, "backup_frequency", "daily", "Backup frequency")
+        # Set default system settings (only if they don't exist)
+        if not crud.get_system_setting(db, "system_timezone"):
+            crud.set_system_setting(db, "system_timezone", "America/Chicago", "System timezone")
+        if not crud.get_system_setting(db, "auto_backup"):
+            crud.set_system_setting(db, "auto_backup", "True", "Enable automatic backups")
+        if not crud.get_system_setting(db, "backup_frequency"):
+            crud.set_system_setting(db, "backup_frequency", "daily", "Backup frequency")
         
     except Exception as e:
         logger.error(f"Error during startup: {e}")

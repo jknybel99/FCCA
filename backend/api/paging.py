@@ -270,15 +270,32 @@ def play_announcement(announcement_id: int, db: Session = Depends(get_db)):
         if not os.path.exists(announcement.file_path):
             raise HTTPException(status_code=404, detail="Announcement file not found")
         
+        # Get pre-announcement sound duration for proper timing
+        pre_sound_duration = get_pre_announcement_duration(db)
+        
         # Play pre-announcement sound first
+        print(f"Playing pre-announcement sound, duration: {pre_sound_duration}")
         play_pre_announcement_sound(db)
         
-        # Small delay to let pre-sound finish
-        time.sleep(0.5)
+        # Wait for pre-announcement to finish (with small buffer)
+        if pre_sound_duration > 0:
+            wait_time = pre_sound_duration + 0.3
+            print(f"Waiting {wait_time} seconds for pre-announcement to finish")
+            time.sleep(wait_time)
+        else:
+            print("No pre-announcement duration found, using default delay")
+            time.sleep(0.8)  # Longer default delay
         
-        # Play the announcement using existing audio system
-        from api.sound import play_audio_file
-        return play_audio_file(announcement.file_path)
+        # Play the announcement using direct audio playback (avoid stop_all_audio conflict)
+        print(f"Now playing recorded announcement: {announcement.file_path}")
+        result = play_recorded_announcement(announcement.file_path)
+        
+        return {
+            "message": f"Playing announcement: {announcement.name}",
+            "announcement_id": announcement_id,
+            "pre_sound_duration": pre_sound_duration,
+            "playback_result": result
+        }
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error playing announcement: {str(e)}")
@@ -430,6 +447,10 @@ def start_recording(
             error_msg = stderr.decode('utf-8').strip()
             raise HTTPException(status_code=500, detail=f"Recording process failed to start: {error_msg}")
         
+        # Start audio level monitoring for the input device
+        print(f"Starting audio level monitoring for recording device: {input_device}")
+        start_audio_level_monitoring(input_device)
+        
         # Update state
         paging_state["is_recording"] = True
         paging_state["current_process"] = process
@@ -493,7 +514,9 @@ def stop_recording(
             except Exception as e:
                 print(f"Error stopping process: {e}")
         
-        # Kill any leftover ffmpeg processes
+        # Stop audio level monitoring
+        stop_audio_level_monitoring()
+        
         try:
             subprocess.run(['pkill', '-f', 'ffmpeg.*pulse'], 
                          stdout=subprocess.DEVNULL, 
@@ -503,6 +526,7 @@ def stop_recording(
 
         # Update state
         paging_state["is_recording"] = False
+        paging_state["is_live_streaming"] = False  # Also stop live streaming
         paging_state["current_process"] = None
         
         # Save to database as announcement
@@ -510,15 +534,18 @@ def stop_recording(
             # Get file duration
             duration = get_audio_duration(recording_file)
             
-            # Create sound record
-            announcement_name = name or f"Announcement {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+            # Create sound record with current timestamp
+            current_time = datetime.now()
+            announcement_name = name or f"Announcement {current_time.strftime('%Y-%m-%d %H:%M')}"
             announcement = models.Sound(
                 name=announcement_name,
                 description="Recorded announcement",
                 file_path=recording_file,
                 duration=duration,
                 type="announcement",
-                tags="paging,announcement,recorded"
+                tags="paging,announcement,recorded",
+                created_at=current_time,
+                updated_at=current_time
             )
             db.add(announcement)
             db.commit()
@@ -691,7 +718,7 @@ def push_to_talk_stream(device_settings: DeviceSettings = Body(...), db: Session
             except:
                 monitor_device = "default"
         
-        # Start audio level monitoring
+        # Start audio level monitoring for live streaming
         start_audio_level_monitoring(monitor_device)
             
         cmd = [
@@ -965,7 +992,8 @@ def get_paging_status(db: Session = Depends(get_db)):
         # Get current paging state
         is_recording = paging_state.get("is_recording", False)
         is_live_streaming = live_stream_process is not None
-        audio_level = paging_state.get("audio_level", 0)
+        # Only return audio level if actively recording or streaming
+        audio_level = paging_state.get("audio_level", 0) if (is_recording or is_live_streaming) else 0
         
         # Get recent announcements
         recent_announcements = db.query(models.Sound).filter(
@@ -1031,6 +1059,21 @@ def stop_playback():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error stopping playback: {str(e)}")
 
+def get_pre_announcement_duration(db: Session) -> float:
+    """Get the duration of the configured pre-announcement sound"""
+    try:
+        # Try both key formats that exist in the database
+        pre_sound_id = crud.get_system_setting(db, 'pagingPreSoundId') or crud.get_system_setting(db, 'paging_preSoundId')
+        
+        if pre_sound_id:
+            sound = crud.get_sound(db, int(pre_sound_id))
+            if sound and sound.file_path and sound.file_path != "Default Bell" and os.path.exists(sound.file_path):
+                return sound.duration or get_audio_duration(sound.file_path)
+    except Exception as e:
+        print(f"Error getting pre-announcement duration: {e}")
+    
+    return 0.0
+
 def play_pre_announcement_sound(db: Session):
     """Play the configured pre-announcement sound"""
     try:
@@ -1046,7 +1089,7 @@ def play_pre_announcement_sound(db: Session):
                 print(f"Found sound: {sound.name}, File: {sound.file_path}")
                 if sound.file_path and sound.file_path != "Default Bell" and os.path.exists(sound.file_path):
                     # Play with specified volume using existing audio system
-                    from api.sound import play_audio_file_with_volume
+                    from .sound import play_audio_file_with_volume
                     play_audio_file_with_volume(sound.file_path, int(pre_sound_volume))
                     print(f"Playing pre-announcement sound: {sound.file_path}")
                 else:
@@ -1055,6 +1098,51 @@ def play_pre_announcement_sound(db: Session):
                 print(f"Sound with ID {pre_sound_id} not found in database")
     except Exception as e:
         print(f"Error playing pre-announcement sound: {e}")
+
+def play_recorded_announcement(file_path: str) -> bool:
+    """Play recorded announcement without stopping other audio"""
+    try:
+        import subprocess
+        
+        if not os.path.exists(file_path):
+            print(f"Recorded announcement file not found: {file_path}")
+            return False
+        
+        print(f"Starting playback of recorded announcement: {file_path}")
+        
+        # Try ffplay first (most reliable for direct playback)
+        try:
+            cmd = ['ffplay', '-nodisp', '-autoexit', file_path]
+            process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print(f"Playing recorded announcement with ffplay: {file_path}")
+            return True
+        except FileNotFoundError:
+            pass
+        
+        # Fallback to aplay
+        try:
+            cmd = ['aplay', file_path]
+            process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print(f"Playing recorded announcement with aplay: {file_path}")
+            return True
+        except FileNotFoundError:
+            pass
+        
+        # Final fallback to paplay
+        try:
+            cmd = ['paplay', file_path]
+            process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print(f"Playing recorded announcement with paplay: {file_path}")
+            return True
+        except FileNotFoundError:
+            pass
+        
+        print(f"No audio player available for recorded announcement: {file_path}")
+        return False
+        
+    except Exception as e:
+        print(f"Error playing recorded announcement {file_path}: {e}")
+        return False
 
 def get_audio_duration(file_path: str) -> float:
     """Get duration of audio file using ffprobe"""

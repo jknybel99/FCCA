@@ -78,13 +78,13 @@ def get_admin_settings(request: Request, db: Session = Depends(get_db)):
             elif key == 'paging_pre_sound_volume':
                 settings['pagingPreSoundVolume'] = value
             elif key == 'audio_audio_sampleRate':
-                settings['audioSampleRate'] = value
+                settings['audioSampleRate'] = int(value) if value else 44100
             elif key == 'audio_audio_bitDepth':
-                settings['audioBitDepth'] = value
+                settings['audioBitDepth'] = int(value) if value else 16
             elif key == 'audio_audio_channels':
-                settings['audioChannels'] = value
+                settings['audioChannels'] = int(value) if value else 2
             elif key == 'audio_audio_bufferSize':
-                settings['audioBufferSize'] = value
+                settings['audioBufferSize'] = int(value) if value else 512
             else:
                 settings[key] = value
     

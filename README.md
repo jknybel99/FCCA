@@ -190,10 +190,12 @@ npm start
 - **Audio Input Management**: Automatic detection and configuration of microphones and USB devices
 - **Device Capabilities**: Automatic detection of supported sample rates, bit depths, and channels
 - **Live Audio Streaming**: Direct microphone-to-speaker audio passthrough
-- **Announcement Recording**: Record and save announcements for later playback
-- **Pre-announcement Sounds**: Configurable bell/chime sounds before announcements
-- **Audio Level Monitoring**: Real-time input level visualization
+- **Announcement Recording**: Record and save announcements for later playback with proper sequencing
+- **Pre-announcement Sounds**: Configurable bell/chime sounds before announcements with accurate timing
+- **Real-time Audio Level Monitoring**: Live input level visualization during recording and streaming
 - **Multi-device Support**: Support for built-in microphones, USB devices, and webcam audio
+- **Announcement Playback**: Full recorded message playback after pre-announcement sound completion
+- **Timestamp Management**: Accurate creation timestamps for all recorded announcements
 
 ### **User Management** (Admin Only)
 - Create and manage user accounts
@@ -217,6 +219,8 @@ npm start
 - **Authentication**: Default admin account should be changed after first login for security
 - **Paging System**: Requires PulseAudio or ALSA for audio input/output functionality
 - **Audio Devices**: USB microphones and webcams are automatically detected and preferred over built-in audio
+- **Settings Persistence**: System settings (including backup frequency) persist across restarts
+- **Audio Monitoring**: Real-time audio levels only display during active recording or streaming
 
 ## 🔧 **Troubleshooting**
 

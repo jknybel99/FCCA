@@ -71,19 +71,23 @@ This creates:
 ### **Backend Setup**
 
 1. **Navigate to backend directory:**
-```bash
-cd backend
+   ```bash
+   cd backend
    ```
 
 2. **Create virtual environment:**
    ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+   python -m venv venv
+   # Activate
+   # macOS/Linux:
+   source venv/bin/activate
+   # Windows (PowerShell):
+   .\\venv\\Scripts\\Activate.ps1
    ```
 
 3. **Install dependencies:**
    ```bash
-pip install -r requirements.txt
+   pip install -r requirements.txt
    ```
 
 4. **Start the server:**
@@ -98,19 +102,30 @@ pip install -r requirements.txt
 ### **Frontend Setup**
 
 1. **Navigate to frontend directory:**
-```bash
-cd frontend
+   ```bash
+   cd frontend
    ```
 
 2. **Install dependencies:**
    ```bash
-npm install
+   npm install
    ```
 
 3. **Start the development server:**
    ```bash
-npm start
-```
+   npm start
+   ```
+
+## 🔑 Environment Configuration
+
+- Notification systems use an environment file. A template is provided at:
+  `notification_systems/config.env.example`
+- Copy it to `.env` in the project root or inside `notification_systems/` and update values:
+  - `NOTIFICATION_EMAIL`, `NOTIFICATION_PASSWORD`, `NOTIFICATION_RECIPIENTS`
+  - `PUSHOVER_TOKEN`, `PUSHOVER_USER`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
+  - `BACKEND_URL`, `CHECK_INTERVAL`, `MAX_ERRORS`
+
+Note: `.env` files are ignored by Git by default (see `.gitignore`).
 
 ## 📁 **Project Structure**
 
@@ -221,6 +236,7 @@ npm start
 - **Audio Devices**: USB microphones and webcams are automatically detected and preferred over built-in audio
 - **Settings Persistence**: System settings (including backup frequency) persist across restarts
 - **Audio Monitoring**: Real-time audio levels only display during active recording or streaming
+- **Certificates**: Local reverse-proxy certificates under `caddy certs/` are machine-specific and ignored
 
 ## 🔧 **Troubleshooting**
 

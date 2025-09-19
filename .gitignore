@@ -27,6 +27,7 @@ env/
 ENV/
 env.bak/
 venv.bak/
+backend/venv/
 
 # Database
 *.db
@@ -37,6 +38,10 @@ venv.bak/
 *.log
 logs/
 
+# PID files
+pids/
+*.pid
+
 # Audio files (keep only sample files)
 static/sounds/*.mp3
 static/sounds/*.wav
@@ -44,21 +49,39 @@ static/sounds/*.aac
 static/sounds/*.ogg
 static/sounds/*.flac
 !static/sounds/sample_*
+backend/static/sounds/*.mp3
+backend/static/sounds/*.wav
+backend/static/sounds/*.aac
+backend/static/sounds/*.ogg
+backend/static/sounds/*.flac
+!backend/static/sounds/sample_*
 
 # TTS generated files
 static/sounds/tts_*.wav
 static/sounds/tts_*.mp3
+backend/static/sounds/tts_*.wav
+backend/static/sounds/tts_*.mp3
+
+# Backend static UI assets and test audio
+backend/static/ui/
+backend/test.wav
+backend/static/recordings/
 
 # Large model files
 backend/piper/*.onnx
 backend/piper/models/
 backend/piper/voices/
+backend/piper/*.onnx.json
 
 # Backup files
 backups/*.zip
 backups/*.tar.gz
 backups/*.sql
 !backups/README.md
+backend/backups/*.zip
+backend/backups/*.tar.gz
+backend/backups/*.sql
+!backend/backups/README.md
 
 # User data and schedules
 backend/bell_system.db
@@ -93,6 +116,9 @@ backend/static/user_content/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Local certificates (copied from other machine)
+caddy certs/
 
 # Node.js
 node_modules/

@@ -59,6 +59,11 @@ start_backend() {
         log_message "${RED}Error: Cannot change to backend directory${NC}"
         return 1
     }
+    # Ensure the virtualenv bin is on PATH so CLI tools (e.g., piper) are found
+    if [ -d "venv/bin" ]; then
+        export PATH="$(pwd)/venv/bin:$PATH"
+    fi
+    log_message "${BLUE}Using PATH: $PATH${NC}"
     
     # Check if virtual environment exists
     if [ ! -d "venv" ]; then
@@ -70,6 +75,8 @@ start_backend() {
     log_message "${BLUE}Checking Python environment...${NC}"
     log_message "${BLUE}Current directory: $(pwd)${NC}"
     log_message "${BLUE}Python3 path: $(which python3)${NC}"
+    log_message "${BLUE}Venv Python (if exists): $(pwd)/venv/bin/python${NC}"
+    log_message "${BLUE}Piper path (if available): $(command -v piper || echo 'piper not found')${NC}"
     
     if [ -f "venv/bin/python" ]; then
         log_message "${GREEN}Using virtual environment Python${NC}"
@@ -79,6 +86,7 @@ start_backend() {
         
         # Start backend in background using venv python
         log_message "${BLUE}Starting backend with: $(pwd)/venv/bin/python main.py${NC}"
+        log_message "${BLUE}Piper path at start: $(command -v piper || echo 'piper not found')${NC}"
         nohup venv/bin/python main.py > "$BACKEND_LOG" 2>&1 &
     else
         log_message "${YELLOW}Virtual environment not found, using system Python${NC}"
@@ -87,6 +95,7 @@ start_backend() {
         
         # Start backend in background using system python
         log_message "${BLUE}Starting backend with: python3 main.py${NC}"
+        log_message "${BLUE}Piper path at start (system): $(command -v piper || echo 'piper not found')${NC}"
         nohup python3 main.py > "$BACKEND_LOG" 2>&1 &
     fi
     local backend_pid=$!

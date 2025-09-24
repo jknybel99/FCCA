@@ -29,6 +29,21 @@ import {
 } from '@mui/icons-material';
 import api from '../api';
 
+// Helper to compute backend base URL (mirrors logic in api.js)
+const getBackendBaseUrl = () => {
+  try {
+    const override = localStorage.getItem('backendUrl');
+    if (override) {
+      const u = new URL(override);
+      return `${u.protocol}//${u.host}`;
+    }
+  } catch {}
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    return 'http://localhost:8000';
+  }
+  return `http://${window.location.hostname}:8000`;
+};
+
 const AudioLevelIndicator = ({ level, isActive }) => {
   const normalizedLevel = Math.min(Math.max(level, 0), 100);
   
@@ -218,7 +233,7 @@ const DeviceSettingsDialog = ({ open, onClose, onSave, currentDevice, devices })
   );
 };
 
-export default function PushToTalkButton({ onStatusChange }) {
+export default function PushToTalkButton({ onStatusChange, onLevelChange }) {
   const [isPressed, setIsPressed] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
@@ -230,13 +245,28 @@ export default function PushToTalkButton({ onStatusChange }) {
   
   const buttonRef = useRef(null);
   const audioLevelInterval = useRef(null);
+  const audioCtxRef = useRef(null);
+  const mediaStreamRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const wsRef = useRef(null);
+
+  // Determine if we're in a secure context for mic access
+  const isSecure = (typeof window !== 'undefined') && (
+    window.isSecureContext ||
+    window.location.protocol === 'https:' ||
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1'
+  );
 
   useEffect(() => {
     const initializeDevices = async () => {
-      await loadInputDevices();
+      if (!isSecure) {
+        setError('Microphone requires a secure context. Use HTTPS or access from http://localhost.');
+        return;
+      }
+      await loadClientInputDevices();
       await loadCurrentSettings();
     };
-    
     initializeDevices();
   }, []);
 
@@ -306,7 +336,10 @@ export default function PushToTalkButton({ onStatusChange }) {
     const handleBeforeUnload = () => {
       if (isStreaming) {
         // Synchronous cleanup on page unload
-        navigator.sendBeacon('/api/paging/push-to-talk-stop');
+        try {
+          const url = `${getBackendBaseUrl()}/api/paging/push-to-talk-stop`;
+          navigator.sendBeacon(url);
+        } catch {}
       }
     };
 
@@ -342,33 +375,26 @@ export default function PushToTalkButton({ onStatusChange }) {
     }
   }, [devices, currentDevice]);
 
-  const loadInputDevices = async () => {
+  const loadClientInputDevices = async () => {
     try {
-      const deviceList = await api.getAudioInputDevices();
-      setDevices(deviceList);
-      if (deviceList.length > 0 && !currentDevice) {
-        // Prefer webcam over built-in audio
-        const webcamDevice = deviceList.find(d => 
-          d.name.toLowerCase().includes('webcam') || 
-          d.name.toLowerCase().includes('c920') ||
-          d.id.includes('usb')
-        );
-        if (webcamDevice) {
-          setCurrentDevice(webcamDevice.id);
-        } else {
-          setCurrentDevice(deviceList[0].id);
-        }
+      // Request permission to access the microphone to ensure labels are available
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      const all = await navigator.mediaDevices.enumerateDevices();
+      const inputs = all.filter(d => d.kind === 'audioinput');
+      const deviceList = inputs.map(d => ({ id: d.deviceId, name: d.label || 'Microphone', type: 'browser' }));
+      if (deviceList.length === 0) {
+        throw new Error('No input devices found');
       }
-    } catch (error) {
-      console.error('Error loading input devices:', error);
-      setError('Failed to load audio input devices');
-      // Fallback to default device
-      setDevices([{
-        id: 'default',
-        name: 'Default Input Device',
-        type: 'default'
-      }]);
-      setCurrentDevice('default');
+      setDevices(deviceList);
+      if (!currentDevice) {
+        // Prefer named devices that look like USB/webcam
+        const preferred = deviceList.find(d => (d.name || '').toLowerCase().includes('webcam') || (d.name || '').toLowerCase().includes('usb')) || deviceList[0];
+        setCurrentDevice(preferred.id);
+      }
+    } catch (err) {
+      console.error('Error loading client input devices:', err);
+      setError('Microphone access is required. Please allow mic permissions and use HTTPS when remote.');
+      setDevices([{ id: '', name: 'No microphone available', type: 'browser' }]);
     }
   };
 
@@ -411,27 +437,30 @@ export default function PushToTalkButton({ onStatusChange }) {
 
   const startAudioLevelMonitoring = async () => {
     try {
-      // Try to get real audio levels from backend
-      const monitorLevel = async () => {
-        try {
-          const status = await api.getPagingStatus();
-          if (status.is_live_streaming && status.audio_level !== undefined) {
-            setAudioLevel(status.audio_level);
-          } else {
-            // Fallback to simulation
-            const baseLevel = 20 + Math.random() * 60;
-            const variation = Math.sin(Date.now() / 200) * 15;
-            setAudioLevel(Math.max(0, Math.min(100, baseLevel + variation)));
-          }
-        } catch (error) {
-          // Fallback to simulation on error
-          const baseLevel = 20 + Math.random() * 60;
-          const variation = Math.sin(Date.now() / 200) * 15;
-          setAudioLevel(Math.max(0, Math.min(100, baseLevel + variation)));
+      // Compute level locally from the MediaStream if available
+      if (!mediaStreamRef.current) return;
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      const source = audioCtxRef.current.createMediaStreamSource(mediaStreamRef.current);
+      const analyser = audioCtxRef.current.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      const tick = () => {
+        analyser.getByteTimeDomainData(dataArray);
+        // Compute RMS
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          const v = (dataArray[i] - 128) / 128;
+          sum += v * v;
         }
+        const rms = Math.sqrt(sum / dataArray.length);
+        const lvl = Math.min(100, Math.max(0, Math.round(rms * 140)));
+        setAudioLevel(lvl);
+        try { onLevelChange?.(lvl); } catch {}
       };
-      
-      audioLevelInterval.current = setInterval(monitorLevel, 100);
+      audioLevelInterval.current = setInterval(tick, 100);
     } catch (error) {
       console.error('Error starting audio level monitoring:', error);
     }
@@ -443,6 +472,11 @@ export default function PushToTalkButton({ onStatusChange }) {
       audioLevelInterval.current = null;
     }
     setAudioLevel(0);
+    try { onLevelChange?.(0); } catch {}
+    if (audioCtxRef.current) {
+      try { audioCtxRef.current.close(); } catch {}
+      audioCtxRef.current = null;
+    }
   };
 
   const handleMouseDown = async () => {
@@ -462,8 +496,81 @@ export default function PushToTalkButton({ onStatusChange }) {
       // Wait for bell to finish playing
       setTimeout(async () => {
         try {
-          const settings = deviceSettings || { device_id: currentDevice };
-          await api.startPushToTalkStream(settings);
+          // Open mic stream on client
+          const constraints = currentDevice
+            ? { audio: { deviceId: { exact: currentDevice } } }
+            : { audio: true };
+          const stream = await navigator.mediaDevices.getUserMedia(constraints);
+          mediaStreamRef.current = stream;
+          // Start local mic level monitoring immediately (even before WS connects)
+          startAudioLevelMonitoring();
+
+          // Open WS to backend and stream Opus chunks
+          const token = localStorage.getItem('token');
+          // Prefer backend override if provided (same as api.js logic)
+          let wsUrl;
+          try {
+            const override = localStorage.getItem('backendUrl');
+            if (override) {
+              const u = new URL(override);
+              const wsSchemeFromOverride = (u.protocol === 'https:') ? 'wss' : 'ws';
+              wsUrl = `${wsSchemeFromOverride}://${u.host}/api/paging/ptt-stream?token=${encodeURIComponent(token || '')}`;
+            }
+          } catch {}
+          if (!wsUrl) {
+            const isHttps = window.location.protocol === 'https:';
+            if (isHttps) {
+              // Use same-origin over wss when served via HTTPS (reverse proxy like Caddy)
+              const wsBase = `wss://${window.location.host}`;
+              wsUrl = `${wsBase}/api/paging/ptt-stream?token=${encodeURIComponent(token || '')}`;
+            } else {
+              // HTTP: fall back to direct backend on port 8000 by hostname
+              const wsScheme = 'ws';
+              const backendHostPort = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+                ? 'localhost:8000'
+                : `${window.location.hostname}:8000`;
+              wsUrl = `${wsScheme}://${backendHostPort}/api/paging/ptt-stream?token=${encodeURIComponent(token || '')}`;
+            }
+          }
+          const ws = new WebSocket(wsUrl);
+          ws.binaryType = 'arraybuffer';
+          wsRef.current = ws;
+
+          await new Promise((resolve, reject) => {
+            const t = setTimeout(() => reject(new Error('WebSocket connect timeout')), 5000);
+            ws.onopen = () => { clearTimeout(t); resolve(); };
+            ws.onerror = (e) => { clearTimeout(t); reject(e); };
+            ws.onclose = (ev) => {
+              // If it closes before open resolves, propagate a meaningful message
+              if (ev && ev.code) {
+                reject(new Error(`WebSocket closed (${ev.code}) ${ev.reason || ''}`));
+              } else {
+                reject(new Error('WebSocket closed'));
+              }
+            };
+          });
+
+          const options = { mimeType: 'audio/webm;codecs=opus' };
+          let recorder;
+          try {
+            recorder = new MediaRecorder(stream, options);
+          } catch {
+            // Fallback without explicit mimeType
+            recorder = new MediaRecorder(stream);
+          }
+          mediaRecorderRef.current = recorder;
+          recorder.ondataavailable = async (e) => {
+            if (!e.data || e.data.size === 0) return;
+            try {
+              const buf = await e.data.arrayBuffer();
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(buf);
+              }
+            } catch (sendErr) {
+              console.error('WS send error:', sendErr);
+            }
+          };
+          recorder.start(100); // 100ms chunks
           setIsStreaming(true);
           startAudioLevelMonitoring();
           onStatusChange?.({ isStreaming: true, device: currentDevice });
@@ -491,11 +598,20 @@ export default function PushToTalkButton({ onStatusChange }) {
     stopAudioLevelMonitoring();
     
     try {
-      // Always call stop API regardless of isStreaming state
-      console.log('Calling stopPushToTalk API...');
-      const response = await api.stopPushToTalk();
-      console.log('Stop API response:', response);
-      
+      // Stop client-side recorder and WS
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach(t => t.stop());
+        mediaStreamRef.current = null;
+      }
+      if (wsRef.current) {
+        try { wsRef.current.close(); } catch {}
+        wsRef.current = null;
+      }
+      // Notify backend to stop any server-side processes (bell finished, etc.)
+      await api.stopPushToTalk();
       setIsStreaming(false);
       onStatusChange?.({ isStreaming: false });
       console.log('Push-to-talk stopped successfully');
@@ -567,7 +683,7 @@ export default function PushToTalkButton({ onStatusChange }) {
             transform: 'scale(1.05)'
           }
         }}
-        disabled={!currentDevice}
+        disabled={!currentDevice || !isSecure}
       >
         {isPressed ? (isStreaming ? "LIVE" : "Starting...") : "Push to Talk"}
       </Button>
@@ -575,6 +691,12 @@ export default function PushToTalkButton({ onStatusChange }) {
       <Typography variant="caption" display="block" sx={{ mt: 1, color: 'text.secondary' }}>
         Hold button or press SPACE to talk
       </Typography>
+
+      {!isSecure && (
+        <Typography color="error" variant="body2" sx={{ mt: 1 }}>
+          Mic access is blocked because this page is not in a secure context. Use HTTPS or open from localhost.
+        </Typography>
+      )}
 
       <AudioLevelIndicator level={audioLevel} isActive={isStreaming} />
 

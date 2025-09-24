@@ -22,7 +22,14 @@ import {
   ListItemText,
   ListItemSecondaryAction,
   InputAdornment,
-  Paper
+  Paper,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  RadioGroup,
+  Radio,
+  FormControlLabel
 } from '@mui/material';
 import PushToTalkButton from './PushToTalkButton';
 import {
@@ -46,9 +53,7 @@ import {
   Search,
   AccessTime,
   FiberManualRecord as FiberManualRecordIcon,
-  Stop,
-  Radio,
-  RadioButtonUnchecked
+  Stop
 } from '@mui/icons-material';
 import dayjs from 'dayjs';
 import api from '../api';
@@ -81,6 +86,20 @@ const Dashboard = () => {
   const [recordingName, setRecordingName] = useState('');
   const [showRecordingNameDialog, setShowRecordingNameDialog] = useState(false);
   const [playBellBeforeRecording, setPlayBellBeforeRecording] = useState(false);
+  // Browser-side recording refs
+  const mediaRecorderRef = React.useRef(null);
+  const mediaStreamRef = React.useRef(null);
+  const recordedChunksRef = React.useRef([]);
+  // Recording mode and server device selection
+  const [recordingMode, setRecordingMode] = useState('browser'); // 'browser' | 'server'
+  const [inputDevices, setInputDevices] = useState([]);
+  const [selectedInputDevice, setSelectedInputDevice] = useState('default');
+  // Browser recording analyser
+  const audioContextRef = React.useRef(null);
+  const analyserRef = React.useRef(null);
+  const levelTimerRef = React.useRef(null);
+  const monitorStreamRef = React.useRef(null);
+  const [isMonitoring, setIsMonitoring] = useState(false);
   
   // Previous announcements state
   const [announcements, setAnnouncements] = useState([]);
@@ -107,9 +126,110 @@ const Dashboard = () => {
   const fetchPagingStatus = async () => {
     try {
       const status = await api.getPagingStatus();
-      setPagingStatus(status);
+      setPagingStatus(prev => ({
+        ...prev,
+        ...status,
+        // When client PTT is streaming, prefer the locally computed mic level
+        audio_level: (prev.is_live_streaming ? (typeof prev.audio_level === 'number' ? prev.audio_level : 0) : (status.audio_level || 0))
+      }));
     } catch (error) {
       console.error('Error fetching paging status:', error);
+    }
+  };
+
+  // Cancel recording (discard for browser mode; server mode cancel not yet supported)
+  const cancelRecording = async () => {
+    try {
+      if (recordingMode === 'server') {
+        showSnackbar('Cancel for server recording is not supported yet. Please stop and save.', 'warning');
+        return;
+      }
+
+      // Browser mode: stop and discard without uploading
+      const recorder = mediaRecorderRef.current;
+      const stream = mediaStreamRef.current;
+      if (recorder && recorder.state !== 'inactive') {
+        await new Promise(resolve => {
+          recorder.onstop = resolve;
+          recorder.stop();
+        });
+      }
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+        mediaStreamRef.current = null;
+      }
+      // Cleanup analyser
+      if (levelTimerRef.current) {
+        clearInterval(levelTimerRef.current);
+        levelTimerRef.current = null;
+      }
+      if (audioContextRef.current) {
+        try { await audioContextRef.current.close(); } catch {}
+        audioContextRef.current = null;
+      }
+      // Discard any recorded chunks
+      recordedChunksRef.current = [];
+      setIsRecording(false);
+      setPagingStatus(prev => ({ ...prev, is_recording: false, audio_level: 0 }));
+      showSnackbar('Recording canceled (discarded)', 'info');
+    } catch (e) {
+      console.error('Cancel recording failed:', e);
+      showSnackbar('Failed to cancel recording', 'error');
+    }
+  };
+
+  // Local Mic Monitor (no recording or streaming)
+  const startMicMonitor = async () => {
+    if (isMonitoring) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      monitorStreamRef.current = stream;
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      const ctx = new AudioCtx();
+      audioContextRef.current = ctx;
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 2048;
+      analyserRef.current = analyser;
+      source.connect(analyser);
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      if (levelTimerRef.current) clearInterval(levelTimerRef.current);
+      levelTimerRef.current = setInterval(() => {
+        if (!analyserRef.current) return;
+        analyserRef.current.getByteTimeDomainData(data);
+        let sum = 0;
+        for (let i = 0; i < data.length; i++) sum += Math.abs(data[i] - 128);
+        const avg = sum / data.length; // 0..128 approx
+        const level = Math.min(100, Math.max(0, Math.round((avg / 64) * 100)));
+        setPagingStatus(prev => ({ ...prev, audio_level: level }));
+      }, 100);
+      setIsMonitoring(true);
+      showSnackbar('Mic monitor started', 'info');
+    } catch (e) {
+      console.error('Mic monitor failed:', e);
+      showSnackbar('Failed to start mic monitor (permission?)', 'error');
+    }
+  };
+
+  const stopMicMonitor = async () => {
+    try {
+      if (levelTimerRef.current) {
+        clearInterval(levelTimerRef.current);
+        levelTimerRef.current = null;
+      }
+      if (monitorStreamRef.current) {
+        monitorStreamRef.current.getTracks().forEach(t => t.stop());
+        monitorStreamRef.current = null;
+      }
+      if (audioContextRef.current) {
+        try { await audioContextRef.current.close(); } catch {}
+        audioContextRef.current = null;
+      }
+      setPagingStatus(prev => ({ ...prev, audio_level: 0 }));
+      setIsMonitoring(false);
+      showSnackbar('Mic monitor stopped', 'info');
+    } catch (e) {
+      console.error('Mic monitor stop failed:', e);
     }
   };
 
@@ -143,11 +263,51 @@ const Dashboard = () => {
     fetchAudioStats();
     fetchSystemStats();
     loadAnnouncements();
+    // Load available input devices for server-side recording
+    (async () => {
+      try {
+        const devs = await api.getAudioInputDevices();
+        setInputDevices(devs || []);
+        const def = (devs || []).find(d => d.id === 'default');
+        setSelectedInputDevice(def ? 'default' : (devs && devs[0] ? devs[0].id : 'default'));
+      } catch (e) {
+        console.error('Error loading input devices:', e);
+      }
+    })();
+    // Load default recording prefs from Admin settings
+    (async () => {
+      try {
+        const admin = await api.getAdminSettings();
+        if (admin?.recordingDefaultMode) {
+          setRecordingMode(admin.recordingDefaultMode);
+        }
+        if (admin?.recordingDefaultInputDevice) {
+          setSelectedInputDevice(admin.recordingDefaultInputDevice);
+        }
+      } catch (e) {
+        console.error('Error loading admin recording defaults:', e);
+      }
+    })();
 
     return () => {
       clearInterval(timeInterval);
       clearInterval(eventInterval);
       clearInterval(pagingInterval);
+      // Cleanup mic monitor on unmount
+      try {
+        if (levelTimerRef.current) {
+          clearInterval(levelTimerRef.current);
+          levelTimerRef.current = null;
+        }
+        if (monitorStreamRef.current) {
+          monitorStreamRef.current.getTracks().forEach(t => t.stop());
+          monitorStreamRef.current = null;
+        }
+        if (audioContextRef.current) {
+          audioContextRef.current.close().catch(() => {});
+          audioContextRef.current = null;
+        }
+      } catch {}
     };
   }, []);
 
@@ -486,38 +646,83 @@ const Dashboard = () => {
 
   // Recording functions
   const startRecording = async () => {
+    if (recordingMode === 'server') {
+      try {
+        setIsRecording(true);
+        await api.startRecording(
+          {
+            device_id: selectedInputDevice || 'default',
+            sample_rate: 44100,
+            bit_depth: 16,
+            channels: 1
+          },
+          600, // up to 10 minutes
+          true
+        );
+        setPagingStatus(prev => ({ ...prev, is_recording: true }));
+        // Poll audio levels during server recording
+        const pollAudioLevels = setInterval(() => {
+          fetchPagingStatus();
+        }, 200);
+        window.audioLevelInterval = pollAudioLevels;
+        showSnackbar('Server recording started', 'success');
+      } catch (error) {
+        console.error('Error starting server recording:', error);
+        setIsRecording(false);
+        showSnackbar(`Failed to start server recording: ${error.response?.data?.detail || error.message}`, 'error');
+      }
+      return;
+    }
+    // Browser mode
     try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+      recordedChunksRef.current = [];
+      let recorder;
+      try {
+        recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+      } catch {
+        recorder = new MediaRecorder(stream);
+      }
+      mediaRecorderRef.current = recorder;
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) recordedChunksRef.current.push(e.data);
+      };
+      recorder.start(100);
       setIsRecording(true);
-      await api.startRecording({
-        device_settings: {
-          device_id: 'default',
-          sample_rate: 44100,
-          bit_depth: 16,
-          channels: 1
-        },
-        duration: 60,
-        play_bell: true
-      });
-      
-      // Update paging status and start polling for audio levels
-      setPagingStatus(prev => ({ ...prev, is_recording: true }));
-      
-      // Start immediate polling for audio levels during recording
-      const pollAudioLevels = setInterval(() => {
-        fetchPagingStatus();
-      }, 100); // Poll every 100ms for smooth audio level updates
-      
-      // Store interval ID to clear it later
-      window.audioLevelInterval = pollAudioLevels;
-      
+      showSnackbar('Recording started', 'success');
+      // Start WebAudio analyser to show input level locally
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        const ctx = new AudioCtx();
+        audioContextRef.current = ctx;
+        const source = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 2048;
+        analyserRef.current = analyser;
+        source.connect(analyser);
+        const data = new Uint8Array(analyser.frequencyBinCount);
+        if (levelTimerRef.current) clearInterval(levelTimerRef.current);
+        levelTimerRef.current = setInterval(() => {
+          if (!analyserRef.current) return;
+          analyserRef.current.getByteTimeDomainData(data);
+          // Compute peak deviation from center (128)
+          let sum = 0;
+          for (let i = 0; i < data.length; i++) {
+            const v = Math.abs(data[i] - 128);
+            sum += v;
+          }
+          const avg = sum / data.length; // ~0-128
+          const level = Math.min(100, Math.max(0, Math.round((avg / 64) * 100)));
+          setPagingStatus(prev => ({ ...prev, audio_level: level }));
+        }, 100);
+      } catch (e) {
+        console.warn('WebAudio analyser init failed:', e);
+      }
     } catch (error) {
-      console.error('Error starting recording:', error);
+      console.error('Error starting browser recording:', error);
       setIsRecording(false);
-      setSnackbar({
-        open: true,
-        message: 'Failed to start recording',
-        severity: 'error'
-      });
+      showSnackbar('Failed to start recording (mic permission or unsupported)', 'error');
     }
   };
 
@@ -531,27 +736,51 @@ const Dashboard = () => {
 
     try {
       setIsPushToTalkLoading(true);
-      console.log('Stopping recording with name:', name);
-      
-      // Always try to stop recording, even if there's an error
-      try {
-        await api.stopRecording(name);
-        showSnackbar('Recording saved successfully', 'success');
-      } catch (error) {
-        console.error('Error stopping recording:', error);
-        showSnackbar(`Warning: ${error.response?.data?.detail || error.message || 'Recording stopped but may not have saved properly'}`, 'warning');
-      }
-      
-      // Update UI state regardless of API success
-      setIsRecording(false);
-      
-      try {
-        // Refresh the recordings list
-        const recordings = await api.getAnnouncementHistory();
-        setRecordings(recordings);
-      } catch (error) {
-        console.error('Error refreshing recordings:', error);
-        // Don't show error to user for this non-critical operation
+      if (recordingMode === 'server') {
+        // Stop server-side recording
+        try {
+          await api.stopRecording(name);
+          showSnackbar('Recording saved successfully', 'success');
+        } catch (e) {
+          console.error('Server stopRecording failed:', e);
+          showSnackbar(`Failed to stop recording: ${e.response?.data?.detail || e.message}`, 'error');
+        }
+        setIsRecording(false);
+        await loadAnnouncements();
+      } else {
+        // Stop MediaRecorder and upload
+        const recorder = mediaRecorderRef.current;
+        const stream = mediaStreamRef.current;
+        if (recorder && recorder.state !== 'inactive') {
+          await new Promise(resolve => {
+            recorder.onstop = resolve;
+            recorder.stop();
+          });
+        }
+        if (stream) {
+          stream.getTracks().forEach(t => t.stop());
+          mediaStreamRef.current = null;
+        }
+        // Cleanup analyser
+        if (levelTimerRef.current) {
+          clearInterval(levelTimerRef.current);
+          levelTimerRef.current = null;
+        }
+        if (audioContextRef.current) {
+          try { await audioContextRef.current.close(); } catch {}
+          audioContextRef.current = null;
+        }
+        const blob = new Blob(recordedChunksRef.current || [], { type: 'audio/webm' });
+        recordedChunksRef.current = [];
+        try {
+          await api.uploadRecording(blob, name);
+          showSnackbar('Recording saved successfully', 'success');
+        } catch (e) {
+          console.error('Upload recording failed:', e);
+          showSnackbar(`Failed to save recording: ${e.response?.data?.detail || e.message}`, 'error');
+        }
+        setIsRecording(false);
+        await loadAnnouncements();
       }
     } catch (error) {
       console.error('Unexpected error in stopRecording:', error);
@@ -561,13 +790,11 @@ const Dashboard = () => {
       setShowRecordingNameDialog(false);
       setRecordingName('');
       
-      // Clear audio level polling
+      // Cleanup any legacy polling flags
       if (window.audioLevelInterval) {
         clearInterval(window.audioLevelInterval);
         window.audioLevelInterval = null;
       }
-      
-      // Update paging status
       setPagingStatus(prev => ({ ...prev, is_recording: false, audio_level: 0 }));
       
       // Reload announcements immediately to show new recording
@@ -644,7 +871,18 @@ const Dashboard = () => {
       showSnackbar('Playing announcement', 'success');
     } catch (error) {
       console.error('Error playing announcement:', error);
-      showSnackbar(`Failed to play announcement: ${error.message || error}`, 'error');
+      // Fallback: try generic sounds playback if available (IDs are from models.Sound)
+      if (error?.response?.status === 404) {
+        try {
+          await api.playAudio(announcementId);
+          showSnackbar('Playing announcement (fallback)', 'success');
+          return;
+        } catch (e2) {
+          console.error('Fallback play failed:', e2);
+        }
+      }
+      const detail = error?.response?.data?.detail || error.message || String(error);
+      showSnackbar(`Failed to play announcement: ${detail}`, 'error');
     }
   };
 
@@ -675,6 +913,7 @@ const Dashboard = () => {
   return (
     <Box sx={{ p: 2 }}>
             <Grid container spacing={2}>
+        {/* Recording Settings moved to Admin Panel */}
         {/* Top Row - Time and Next Event */}
         <Grid item xs={12} md={6}>
           <Card sx={{ height: '100%', boxShadow: 2, '&:hover': { boxShadow: 4 } }}>
@@ -1071,6 +1310,28 @@ const Dashboard = () => {
         </DialogActions>
       </Dialog>
 
+      {/* Always show input level meter for Push-To-Talk / mic activity */}
+      {pagingDialogOpen && (
+        <Box sx={{ mt: 2, px: 3 }}>
+          <Typography variant="body2" gutterBottom>
+            Mic Level: {Math.round(pagingStatus.audio_level || 0)}%
+          </Typography>
+          <LinearProgress
+            variant="determinate"
+            value={pagingStatus.audio_level || 0}
+            sx={{
+              height: 8,
+              borderRadius: 4,
+              backgroundColor: 'rgba(0,0,0,0.1)',
+              '& .MuiLinearProgress-bar': {
+                backgroundColor: pagingStatus.audio_level > 80 ? '#f44336' :
+                               pagingStatus.audio_level > 50 ? '#ff9800' : '#4caf50'
+              }
+            }}
+          />
+        </Box>
+      )}
+
       {/* Previous Announcements Dialog */}
       <Dialog 
         open={showAnnouncementsDialog} 
@@ -1251,7 +1512,14 @@ const Dashboard = () => {
                   is_live_streaming: status.isStreaming || false
                 }));
               }}
+              onLevelChange={(lvl) => {
+                setPagingStatus(prev => ({
+                  ...prev,
+                  audio_level: typeof lvl === 'number' ? lvl : 0
+                }));
+              }}
             />
+            
             
             {/* Additional Controls */}
             <Box sx={{ mt: 4 }}>
@@ -1277,31 +1545,20 @@ const Dashboard = () => {
                       </Button>
                     </Grid>
                     <Grid item>
+                      <Button
+                        variant="outlined"
+                        color="inherit"
+                        onClick={cancelRecording}
+                        disabled={recordingMode === 'server'}
+                      >
+                        Cancel (Discard)
+                      </Button>
+                    </Grid>
+                    <Grid item>
                       <Typography variant="body2" color="error">
                         <FiberManualRecordIcon sx={{ animation: 'blink 1.5s infinite', fontSize: '1rem' }} />
                         Recording in progress...
                       </Typography>
-                    </Grid>
-                    {/* Audio Level Indicator */}
-                    <Grid item xs={12}>
-                      <Box sx={{ mt: 2 }}>
-                        <Typography variant="body2" gutterBottom>
-                          Audio Level: {Math.round(pagingStatus.audio_level || 0)}%
-                        </Typography>
-                        <LinearProgress 
-                          variant="determinate" 
-                          value={pagingStatus.audio_level || 0}
-                          sx={{ 
-                            height: 8, 
-                            borderRadius: 4,
-                            backgroundColor: 'rgba(0,0,0,0.1)',
-                            '& .MuiLinearProgress-bar': {
-                              backgroundColor: pagingStatus.audio_level > 80 ? '#f44336' : 
-                                             pagingStatus.audio_level > 50 ? '#ff9800' : '#4caf50'
-                            }
-                          }}
-                        />
-                      </Box>
                     </Grid>
                   </>
                 ) : (
@@ -1314,7 +1571,7 @@ const Dashboard = () => {
                         onClick={startRecording}
                         disabled={pagingStatus.is_live_streaming}
                       >
-                        Record Message
+                        Start Recording
                       </Button>
                     </Grid>
                     <Grid item>

@@ -26,6 +26,7 @@ def get_admin_settings(request: Request, db: Session = Depends(get_db)):
         'footer_text', 'system_timezone', 'auto_backup', 'backup_frequency',
         'max_file_size', 'allowed_file_types', 'ntp_enabled', 'ntp_servers', 'ntp_sync_interval',
         'default_audio_input_device', 'paging_pre_sound_id', 'paging_pre_sound_volume',
+        'recording_default_mode', 'recording_default_input_device',
         'audio_audio_sampleRate', 'audio_audio_bitDepth', 'audio_audio_channels', 'audio_audio_bufferSize'
     ]
     
@@ -36,19 +37,34 @@ def get_admin_settings(request: Request, db: Session = Depends(get_db)):
             if key == 'school_name':
                 settings['schoolName'] = value
             elif key == 'school_logo':
-                # Make logo URL absolute for remote access
-                if value and value.startswith('/'):
-                    # Construct absolute URL using the request host
+                # Normalize logo URL to the current request origin to avoid mixed content
+                if value:
                     base_url = f"{request.url.scheme}://{request.url.netloc}"
-                    settings['schoolLogo'] = f"{base_url}{value}"
-                elif value and 'localhost' in value:
-                    # Fix old localhost URLs by replacing with current host
-                    base_url = f"{request.url.scheme}://{request.url.netloc}"
-                    # Extract the path part after localhost:8000
-                    path_part = value.split('localhost:8000')[-1]
-                    settings['schoolLogo'] = f"{base_url}{path_part}"
-                else:
-                    settings['schoolLogo'] = value
+                    if value.startswith('/'):
+                        # Stored as relative path -> make absolute
+                        settings['schoolLogo'] = f"{base_url}{value}"
+                    elif 'localhost' in value:
+                        # Replace old localhost host/port with current host
+                        # Extract the path part after localhost:8000 (or localhost)
+                        path_part = value.split('localhost:8000')[-1] if 'localhost:8000' in value else value.split('localhost')[-1]
+                        if not path_part.startswith('/'):
+                            path_part = f"/{path_part}"
+                        settings['schoolLogo'] = f"{base_url}{path_part}"
+                    elif value.startswith('http://') or value.startswith('https://'):
+                        # If an absolute URL points to another origin/scheme, rewrite to current origin preserving path
+                        try:
+                            from urllib.parse import urlparse
+                            parsed = urlparse(value)
+                            path_with_query = parsed.path or '/'
+                            if parsed.query:
+                                path_with_query += f"?{parsed.query}"
+                            settings['schoolLogo'] = f"{base_url}{path_with_query}"
+                        except Exception:
+                            # Fallback: return as-is
+                            settings['schoolLogo'] = value
+                    else:
+                        # Unknown format; return as-is
+                        settings['schoolLogo'] = value
             elif key == 'contact_email':
                 settings['contactEmail'] = value
             elif key == 'contact_phone':
@@ -73,6 +89,10 @@ def get_admin_settings(request: Request, db: Session = Depends(get_db)):
                 settings['ntpSyncInterval'] = value
             elif key == 'default_audio_input_device':
                 settings['defaultAudioInputDevice'] = value
+            elif key == 'recording_default_mode':
+                settings['recordingDefaultMode'] = value
+            elif key == 'recording_default_input_device':
+                settings['recordingDefaultInputDevice'] = value
             elif key == 'paging_pre_sound_id':
                 settings['pagingPreSoundId'] = value
             elif key == 'paging_pre_sound_volume':
@@ -112,6 +132,8 @@ def save_admin_settings(settings: dict, db: Session = Depends(get_db)):
             'defaultAudioInputDevice': 'default_audio_input_device',
             'pagingPreSoundId': 'paging_pre_sound_id',
             'pagingPreSoundVolume': 'paging_pre_sound_volume',
+            'recordingDefaultMode': 'recording_default_mode',
+            'recordingDefaultInputDevice': 'recording_default_input_device',
             # Audio settings mappings
             'audioSampleRate': 'audio_audio_sampleRate',
             'audioBitDepth': 'audio_audio_bitDepth',

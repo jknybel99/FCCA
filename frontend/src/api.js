@@ -1,14 +1,47 @@
 import axios from "axios";
 
-// Smart backend URL detection
+// Smart backend URL detection with optional override
 const getBackendUrl = () => {
-  // If we're running on localhost (same machine), use localhost
+  // Allow manual override for LAN setups where the UI runs on localhost
+  try {
+    const override = localStorage.getItem('backendUrl');
+    if (override) {
+      // Validate a bit by constructing URL
+      const u = new URL(override);
+      return `${u.protocol}//${u.host}`;
+    }
+  } catch {}
+
+  // If page is loaded over HTTPS, prefer same-origin to leverage reverse proxy (e.g., Caddy)
+  if (window.location.protocol === 'https:') {
+    return `${window.location.protocol}//${window.location.host}`;
+  }
+
+  // If we're running on localhost (same machine), use localhost backend default
   if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
     return "http://localhost:8000";
   }
-  
-  // If running from a network device, use the same hostname but port 8000
+
+  // Otherwise, use LAN hostname with port 8000 for direct backend access over HTTP
   return `http://${window.location.hostname}:8000`;
+};
+
+// Named helper exports for managing backend URL override from the UI
+export const getBackendBaseUrl = () => BASE_URL;
+export const getBackendUrlOverride = () => {
+  try { return localStorage.getItem('backendUrl') || ''; } catch { return ''; }
+};
+export const setBackendUrlOverride = (url) => {
+  if (!url) return;
+  // Basic validation
+  const parsed = new URL(url);
+  if (!/^https?:$/.test(parsed.protocol)) {
+    throw new Error('URL must start with http:// or https://');
+  }
+  localStorage.setItem('backendUrl', `${parsed.protocol}//${parsed.host}`);
+};
+export const clearBackendUrlOverride = () => {
+  try { localStorage.removeItem('backendUrl'); } catch {}
 };
 
 const BASE_URL = getBackendUrl();
@@ -59,6 +92,8 @@ const setAuthToken = (token) => {
 export default {
   // Authentication methods
   setAuthToken,
+  // Also expose a way to read the resolved base URL from consumers of the default export
+  get baseUrl() { return BASE_URL; },
   
   login: async (username, password) => {
     const res = await axiosInstance.post(`${API}/auth/login`, {
@@ -398,13 +433,15 @@ export default {
   },
 
   // TTS
-  generateTTS: async (text, language = null) => {
+  generateTTS: async (text, voiceOrLang = null) => {
     const form = new FormData();
     form.append("text", text);
-    if (language) {
-      form.append("language", language);
+    if (voiceOrLang) {
+      // Send both for compatibility; backend will prioritize voice_id if it matches
+      form.append("voice_id", voiceOrLang);
+      form.append("language", voiceOrLang);
     }
-    const res = await axiosInstance.post(`${API}/tts/announce`, form);
+    const res = await axiosInstance.post(`${API}/tts/announce`, form, { timeout: 180000 });
     return res.data;
   },
 
@@ -422,6 +459,16 @@ export default {
 
   getTTSStatus: async () => {
     const res = await axiosInstance.get(`${API}/tts/status`);
+    return res.data;
+  },
+
+  cleanupTTS: async () => {
+    const res = await axiosInstance.post(`${API}/tts/cleanup`);
+    return res.data;
+  },
+
+  cleanupVoices: async () => {
+    const res = await axiosInstance.post(`${API}/tts/cleanup-voices`);
     return res.data;
   },
 
@@ -444,12 +491,6 @@ export default {
     return res.data;
   },
 
-  detectLanguage: async (text) => {
-    const form = new FormData();
-    form.append("text", text);
-    const res = await axiosInstance.post(`${API}/tts/detect-language`, form);
-    return res.data;
-  },
 
   toggleMockMode: async (mockMode) => {
     const form = new FormData();
@@ -608,59 +649,13 @@ export default {
     return res.data;
   },
 
-
-  getAnnouncementHistory: async (limit = 20) => {
-    const res = await axiosInstance.get(`${API}/paging/announcements?limit=${limit}`);
-    return res.data;
-  },
-
-  playAnnouncement: async (announcementId) => {
-    const res = await axiosInstance.post(`${API}/paging/announcements/${announcementId}/play`);
-    return res.data;
-  },
-
   stopPlayback: async () => {
     const res = await axiosInstance.post(`${API}/paging/stop-playback`);
     return res.data;
   },
 
-  startRecording: async (duration = null, playBell = false) => {
-    const params = new URLSearchParams();
-    if (duration) params.append('duration', duration);
-    if (playBell) params.append('play_bell', 'true');
-    const url = `${API}/paging/start-recording${params.toString() ? '?' + params.toString() : ''}`;
-    const res = await axiosInstance.post(url);
-    return res.data;
-  },
-
-  stopRecording: async (name = null) => {
-    const res = await axiosInstance.post(`${API}/paging/stop-recording?name=${name || ''}`);
-    return res.data;
-  },
-
-  startLiveStream: async () => {
-    const res = await axiosInstance.post(`${API}/paging/start-live-stream`);
-    return res.data;
-  },
-
   startLiveStreamWithCountdown: async () => {
     const res = await axiosInstance.post(`${API}/paging/start-live-stream-with-countdown`);
-    return res.data;
-  },
-
-  // Push-to-talk functions
-  startPushToTalk: async () => {
-    const res = await axiosInstance.post(`${API}/paging/push-to-talk-start`);
-    return res.data;
-  },
-
-  startPushToTalkStream: async (deviceSettings) => {
-    const res = await axiosInstance.post(`${API}/paging/push-to-talk-stream`, deviceSettings);
-    return res.data;
-  },
-
-  stopPushToTalk: async () => {
-    const res = await axiosInstance.post(`${API}/paging/push-to-talk-stop`);
     return res.data;
   },
 
@@ -710,6 +705,17 @@ export default {
   },
   savePagingSettings: async (settings) => {
     const res = await axiosInstance.post(`${API}/paging/settings`, settings);
+    return res.data;
+  },
+
+  // Upload a browser-recorded announcement
+  uploadRecording: async (blob, name = null) => {
+    const form = new FormData();
+    form.append('file', blob, 'recording.webm');
+    if (name) form.append('name', name);
+    const res = await axiosInstance.post(`${API}/paging/upload-recording`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
     return res.data;
   },
 

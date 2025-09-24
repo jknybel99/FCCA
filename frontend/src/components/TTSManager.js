@@ -67,6 +67,8 @@ const TTSManager = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [detectedLanguage, setDetectedLanguage] = useState('');
   const [isDetectingLanguage, setIsDetectingLanguage] = useState(false);
+  const [isCleaning, setIsCleaning] = useState(false);
+  const [modelIdOverride, setModelIdOverride] = useState('');
 
   useEffect(() => {
     loadAvailableVoices();
@@ -82,6 +84,35 @@ const TTSManager = () => {
     } catch (error) {
       console.error('Error loading voices:', error);
       setError('Failed to load available voices');
+    }
+  };
+
+  const cleanupVoiceFiles = async () => {
+    try {
+      setIsCleaning(true);
+      const result = await api.cleanupVoices();
+      setSuccessMessage(`Voice files cleanup complete. Removed: ${result.removed}`);
+      await loadAvailableVoices();
+    } catch (e) {
+      console.error('Voice files cleanup failed:', e);
+      const detail = e?.response?.data?.detail || e?.message || 'Cleanup failed';
+      setError(detail);
+    } finally {
+      setIsCleaning(false);
+    }
+  };
+
+  const cleanupTTS = async () => {
+    try {
+      setIsCleaning(true);
+      const result = await api.cleanupTTS();
+      setSuccessMessage(`Cleanup complete. Removed: ${result.removed}, Kept: ${result.kept}, Examined: ${result.total_examined}`);
+    } catch (e) {
+      console.error('Cleanup failed:', e);
+      const detail = e?.response?.data?.detail || e?.message || 'Cleanup failed';
+      setError(detail);
+    } finally {
+      setIsCleaning(false);
     }
   };
 
@@ -146,27 +177,24 @@ const TTSManager = () => {
       setError('Please enter text to convert to speech');
       return;
     }
-    
-    if (!selectedVoice) {
-      setError('Please select a voice');
-      return;
-    }
 
     try {
       setIsGenerating(true);
       setError('');
       
-      const response = await api.generateTTS(ttsText, selectedVoice);
+      const voiceToUse = (modelIdOverride && modelIdOverride.trim()) || selectedVoice || null;
+      const response = await api.generateTTS(ttsText, voiceToUse);
       
-      if (response.success) {
+      if (response && response.success) {
         setSuccessMessage(`TTS audio generated successfully: ${response.filename}`);
         setTtsText(''); // Clear the text after successful generation
       } else {
-        setError(response.error || 'TTS generation failed');
+        setError(response?.error || response?.detail || 'TTS generation failed');
       }
     } catch (error) {
       console.error('Error generating TTS:', error);
-      setError('Failed to generate TTS audio');
+      const detail = error?.response?.data?.detail || error?.message || 'Failed to generate TTS audio';
+      setError(detail);
     } finally {
       setIsGenerating(false);
     }
@@ -249,33 +277,36 @@ const TTSManager = () => {
   };
 
   const getAvailableVoicesList = () => {
-    const available = [];
-    
-    // Add core voices that exist
+    // Deduplicate by file path; prefer additional voices over core
+    const byPath = new Map();
+
+    // Process core voices
     Object.entries(availableVoices).forEach(([voiceId, voice]) => {
-      if (voice.exists) {
-        available.push({
+      if (!voice.exists) return;
+      const key = voice.path || `${voiceId}`;
+      if (!byPath.has(key)) {
+        byPath.set(key, {
           id: voiceId,
           name: voice.name,
           language: voice.language,
-          quality: 'medium' // Core voices are typically medium quality
+          quality: 'medium'
         });
       }
     });
-    
-    // Add additional voices that exist
+
+    // Process additional voices (override duplicates on same path)
     Object.entries(additionalVoices).forEach(([voiceId, voice]) => {
-      if (voice.exists) {
-        available.push({
-          id: voiceId,
-          name: voice.name,
-          language: voice.language_code || voice.language,
-          quality: voice.quality
-        });
-      }
+      if (!voice.exists) return;
+      const key = voice.path || `${voiceId}`;
+      byPath.set(key, {
+        id: voiceId,
+        name: voice.name,
+        language: voice.language_code || voice.language,
+        quality: voice.quality
+      });
     });
-    
-    return available;
+
+    return Array.from(byPath.values());
   };
 
   const findBestVoiceForLanguage = (language, availableVoicesList) => {
@@ -382,6 +413,18 @@ const TTSManager = () => {
                   </Select>
                 </FormControl>
               </Grid>
+
+              {/* Optional Model ID override for auto-download */}
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Piper Model ID (optional)"
+                  value={modelIdOverride}
+                  onChange={(e) => setModelIdOverride(e.target.value)}
+                  placeholder="e.g., pl_PL-darkman-medium"
+                  helperText="Enter a Piper model ID to auto-download and use that voice. Overrides the dropdown if provided."
+                />
+              </Grid>
               
               <Grid item xs={12} md={6}>
                 <Button
@@ -389,7 +432,7 @@ const TTSManager = () => {
                   size="large"
                   fullWidth
                   onClick={generateTTS}
-                  disabled={isGenerating || !ttsText.trim() || !selectedVoice || availableVoicesList.length === 0}
+                  disabled={isGenerating || !ttsText.trim()}
                   startIcon={isGenerating ? <CircularProgress size={20} /> : <VolumeUp />}
                   sx={{ height: '56px' }}
                 >
@@ -509,7 +552,6 @@ const TTSManager = () => {
       })}
     </Box>
   );
-
   return (
     <Box sx={{ p: 3 }}>
       {/* Header with Mock Mode Toggle */}
@@ -517,19 +559,26 @@ const TTSManager = () => {
         <Typography variant="h4" component="h1">
           TTS Manager
         </Typography>
-        
-        {ttsStatus && (
-          <FormControlLabel
-            control={
-              <Switch
-                checked={ttsStatus.mock_mode}
-                onChange={(e) => toggleMockMode(e.target.checked)}
-                color="primary"
-              />
-            }
-            label="Mock Mode (for testing)"
-          />
-        )}
+        <Box display="flex" alignItems="center" gap={2}>
+          {ttsStatus && (
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={ttsStatus.mock_mode}
+                  onChange={(e) => toggleMockMode(e.target.checked)}
+                  color="primary"
+                />
+              }
+              label="Mock Mode (for testing)"
+            />
+          )}
+          <Button variant="outlined" size="small" onClick={cleanupVoiceFiles} disabled={isCleaning}>
+            {isCleaning ? 'Cleaning…' : 'Clean Up Voice Files'}
+          </Button>
+          <Button variant="outlined" size="small" onClick={cleanupTTS} disabled={isCleaning}>
+            {isCleaning ? 'Cleaning…' : 'Clean Up TTS Records'}
+          </Button>
+        </Box>
       </Box>
 
       {/* Status Cards */}
@@ -541,12 +590,34 @@ const TTSManager = () => {
                 <Typography variant="h6" gutterBottom>
                   TTS System Status
                 </Typography>
+                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 1 }}>
+                  <Chip
+                    label={`Mode: ${ttsStatus?.mock_mode ? 'Mock (Testing)' : 'Real (Piper)'}`}
+                    color={ttsStatus?.mock_mode ? 'warning' : 'success'}
+                    size="small"
+                  />
+                  <Chip
+                    label={`Piper CLI: ${ttsStatus?.piper_cli?.available ? 'Available' : 'Not available'}`}
+                    color={ttsStatus?.piper_cli?.available ? 'success' : 'error'}
+                    size="small"
+                  />
+                </Box>
                 <Typography variant="body2" color="text.secondary">
-                  Mode: {ttsStatus.mock_mode ? 'Mock (Testing)' : 'Real (Piper)'}
+                  {`Output dir: ${ttsStatus?.output_directory || '—'}`}
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Status: {ttsStatus.status}
-                </Typography>
+                {ttsStatus?.piper_cli?.version && (
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                    {`Piper version: ${ttsStatus.piper_cli.version}`}
+                  </Typography>
+                )}
+                {!ttsStatus?.piper_cli?.available && (
+                  <Alert severity="warning" sx={{ mt: 1 }}>
+                    Piper CLI not detected. Ensure the backend runs in the venv where piper-tts is installed, or add it to PATH.
+                  </Alert>
+                )}
+                <Box sx={{ mt: 1 }}>
+                  <Button variant="outlined" size="small" onClick={loadTTSStatus}>Refresh Status</Button>
+                </Box>
               </CardContent>
             </Card>
           </Grid>
@@ -555,13 +626,13 @@ const TTSManager = () => {
             <Card>
               <CardContent>
                 <Typography variant="h6" gutterBottom>
-                  Available Voices
+                  Installed Voices
                 </Typography>
                 <Typography variant="h4" color="primary">
-                  {Object.values(availableVoices).filter(v => v.exists).length + Object.values(additionalVoices).filter(v => v.exists).length}
+                  {getAvailableVoicesList().length}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Ready for TTS generation
+                  Ready to use locally
                 </Typography>
               </CardContent>
             </Card>
@@ -571,13 +642,13 @@ const TTSManager = () => {
             <Card>
               <CardContent>
                 <Typography variant="h6" gutterBottom>
-                  Downloaded Voices
+                  Repository Voices
                 </Typography>
-                <Typography variant="h4" color="success">
-                  {Object.values(additionalVoices).filter(v => v.exists).length}
+                <Typography variant="h4" color="info">
+                  {Object.values(voicesByLanguage || {}).reduce((sum, l) => sum + (l.voices?.length || 0), 0)}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Additional voices available
+                  Total voices detected from Piper repo
                 </Typography>
               </CardContent>
             </Card>

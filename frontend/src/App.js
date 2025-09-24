@@ -21,8 +21,14 @@ import {
   ListItem,
   ListItemText,
   ListItemIcon,
-  Divider
+  Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField
 } from "@mui/material";
+
 import AudioUpload from "./components/AudioUpload";
 import ScheduleManager from "./components/ScheduleManager";
 import CalendarView from "./components/CalendarView";
@@ -36,7 +42,8 @@ import Login from "./components/Login";
 import ProtectedRoute from "./components/ProtectedRoute";
 import UserProfile from "./components/UserProfile";
 import { useAuth, AuthProvider } from "./contexts/AuthContext";
-import api from "./api";
+import api, { getBackendBaseUrl, getBackendUrlOverride, setBackendUrlOverride, clearBackendUrlOverride } from "./api";
+
 import { ThemeProvider, createTheme } from "@mui/material/styles";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
@@ -93,6 +100,9 @@ function AppContent() {
   const [scheduleRefreshKey, setScheduleRefreshKey] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userMenuAnchor, setUserMenuAnchor] = useState(null);
+  const [backendDialogOpen, setBackendDialogOpen] = useState(false);
+  const [backendUrlInput, setBackendUrlInput] = useState("");
+  const [resolvedBaseUrl, setResolvedBaseUrl] = useState("");
 
   const refreshAudio = () => api.getAudioFiles().then(setAudioFiles);
   const refreshSchedules = () => api.getBellEvents().then(setScheduledEvents);
@@ -105,11 +115,16 @@ function AppContent() {
     }
   }, [isAuthenticated]);
 
+  useEffect(() => {
+    // Initialize backend URL fields
+    setResolvedBaseUrl(getBackendBaseUrl());
+    setBackendUrlInput(getBackendUrlOverride());
+  }, []);
+
   // Show login if not authenticated
   if (!isAuthenticated()) {
     return <Login />;
   }
-
 
   const loadAdminSettings = async () => {
     try {
@@ -160,6 +175,29 @@ function AppContent() {
   const handleLogout = () => {
     handleUserMenuClose();
     logout();
+  };
+
+  const openBackendDialog = () => {
+    setBackendUrlInput(getBackendUrlOverride());
+    setResolvedBaseUrl(getBackendBaseUrl());
+    setBackendDialogOpen(true);
+  };
+
+  const handleSaveBackendUrl = () => {
+    try {
+      if (!backendUrlInput) return;
+      setBackendUrlOverride(backendUrlInput);
+      setSnackbar({ open: true, message: "Backend URL saved. Reloading..." });
+      setTimeout(() => window.location.reload(), 500);
+    } catch (e) {
+      setSnackbar({ open: true, message: e.message || "Invalid URL" });
+    }
+  };
+
+  const handleClearBackendUrl = () => {
+    clearBackendUrlOverride();
+    setSnackbar({ open: true, message: "Backend URL override cleared. Reloading..." });
+    setTimeout(() => window.location.reload(), 500);
   };
 
   const handleMobileTabChange = (tabIndex) => {
@@ -234,6 +272,7 @@ function AppContent() {
         <CssBaseline />
         <AppBar position="static">
           <Toolbar>
+
             {/* Mobile menu button */}
             {isMobile && (
               <IconButton
@@ -280,6 +319,14 @@ function AppContent() {
             
             {/* User info and logout - responsive */}
             <Box sx={{ display: 'flex', alignItems: 'center', gap: isMobile ? 1 : 2 }}>
+              <Button 
+                color="inherit" 
+                onClick={openBackendDialog}
+                variant="outlined"
+                size="small"
+              >
+                Backend
+              </Button>
               {!isMobile && (
                 <Typography variant="body2" sx={{ color: 'white' }}>
                   {user?.username} {user?.is_admin ? '(Admin)' : '(User)'}
@@ -469,6 +516,34 @@ function AppContent() {
             </IconButton>
           }
         />
+
+        {/* Backend URL Dialog */}
+        <Dialog open={backendDialogOpen} onClose={() => setBackendDialogOpen(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>Backend URL</DialogTitle>
+          <DialogContent>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+              <TextField
+                label="Override URL"
+                placeholder="http://192.168.1.10:8000"
+                value={backendUrlInput}
+                onChange={(e) => setBackendUrlInput(e.target.value)}
+                fullWidth
+                helperText="Provide http(s)://host:port. Leave empty to keep current settings."
+              />
+              <Typography variant="caption" color="text.secondary">
+                Resolved base URL: {resolvedBaseUrl}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Note: Changing the backend URL will reload the page to take effect.
+              </Typography>
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setBackendDialogOpen(false)}>Close</Button>
+            <Button color="warning" onClick={handleClearBackendUrl}>Clear Override</Button>
+            <Button variant="contained" onClick={handleSaveBackendUrl}>Save & Reload</Button>
+          </DialogActions>
+        </Dialog>
       </LocalizationProvider>
     </ThemeProvider>
   );

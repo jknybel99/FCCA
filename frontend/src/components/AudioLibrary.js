@@ -32,7 +32,8 @@ import {
   TableRow,
   InputAdornment,
   Tabs,
-  Tab
+  Tab,
+  Tooltip
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -357,9 +358,21 @@ export default function AudioLibrary() {
                     </TableCell>
                     <TableCell>
                       {file.description && (
-                        <Typography variant="caption" color="text.secondary" display="block">
-                          {file.description}
-                        </Typography>
+                        <Tooltip title={file.description} placement="top-start">
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            display="block"
+                            sx={{
+                              maxWidth: 400,
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis'
+                            }}
+                          >
+                            {file.description}
+                          </Typography>
+                        </Tooltip>
                       )}
                       <Typography variant="body2" fontWeight="bold">
                         {file.name}

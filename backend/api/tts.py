@@ -2,6 +2,7 @@ from fastapi import APIRouter, Form, HTTPException, Depends
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from database import SessionLocal
+import models
 import os
 import uuid
 import subprocess
@@ -49,6 +50,16 @@ CACHE_DURATION = 3600  # 1 hour cache
 # Mock TTS mode for testing (when Piper is not compatible)
 MOCK_TTS_MODE = False  # Set to False to try real Piper
 
+# Default piper model IDs to use with CLI auto-download
+# See: https://github.com/OHF-Voice/piper1-gpl/blob/main/docs/CLI.md
+DEFAULT_PIPER_MODELS = {
+    'en': 'en_US-lessac-medium',
+    'es': 'es_AR-daniela-high',
+    'pl': 'pl_PL-darkman-medium',
+    'fr': 'fr_FR-gilles-medium',
+    'de': 'de_DE-eva_k-x_low',
+}
+
 def fetch_all_voices() -> dict:
     """Fetch all available voices from the Piper TTS repository"""
     global VOICES_CACHE, VOICES_CACHE_TIMESTAMP
@@ -88,10 +99,12 @@ def fetch_all_voices() -> dict:
                 # Get file path for download
                 files = voice_info.get('files', {})
                 onnx_file = None
+                onnx_json_file = None
                 for file_path in files.keys():
                     if file_path.endswith('.onnx'):
                         onnx_file = file_path
-                        break
+                    if file_path.endswith('.onnx.json'):
+                        onnx_json_file = file_path
                 
                 if onnx_file:
                     # Create voice entry
@@ -105,6 +118,7 @@ def fetch_all_voices() -> dict:
                         'voice_name': voice_info.get('name', 'Unknown'),
                         'quality': voice_info.get('quality', 'unknown'),
                         'download_url': f"https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/{onnx_file}",
+                        'config_url': (f"https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/{onnx_json_file}" if onnx_json_file else None),
                         'size': f"~{files[onnx_file].get('size_bytes', 0) // (1024*1024)}MB" if onnx_file in files else "~60MB"
                     }
                     
@@ -347,29 +361,41 @@ def download_voice_file(voice_id: str) -> dict:
     # Create piper directory if it doesn't exist
     os.makedirs(os.path.dirname(voice_path), exist_ok=True)
     
-    # Check if file already exists
-    if os.path.exists(voice_path):
-        return {"success": True, "message": f"Voice file already exists: {voice_config['name']}"}
+    # Check if files already exist
+    if os.path.exists(voice_path) and os.path.exists(f"{voice_path}.json"):
+        return {"success": True, "message": f"Voice already complete: {voice_config['name']}"}
     
     try:
-        print(f"Downloading voice file for {voice_config['name']}...")
+        print(f"Downloading voice model for {voice_config['name']}...")
         response = requests.get(voice_config['download_url'], stream=True, timeout=300)
         response.raise_for_status()
-        
-        # Download the file
+        # Download model
         with open(voice_path, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
         
-        # Verify the file was downloaded
-        if os.path.exists(voice_path) and os.path.getsize(voice_path) > 0:
-            return {
-                "success": True, 
-                "message": f"Successfully downloaded {voice_config['name']}",
-                "size": os.path.getsize(voice_path)
-            }
-        else:
-            return {"success": False, "error": "Downloaded file is empty or corrupted"}
+        # Download config JSON if URL available
+        cfg_url = voice_config.get('config_url')
+        cfg_path = f"{voice_path}.json"
+        if cfg_url:
+            print(f"Downloading voice config for {voice_config['name']}...")
+            response2 = requests.get(cfg_url, stream=True, timeout=120)
+            response2.raise_for_status()
+            with open(cfg_path, 'wb') as f2:
+                for chunk in response2.iter_content(chunk_size=8192):
+                    f2.write(chunk)
+        
+        # Verify
+        if not os.path.exists(voice_path) or os.path.getsize(voice_path) == 0:
+            return {"success": False, "error": "Downloaded model is empty or missing"}
+        if not os.path.exists(cfg_path) or os.path.getsize(cfg_path) == 0:
+            return {"success": False, "error": "Downloaded config is empty or missing; voice incomplete"}
+        
+        return {
+            "success": True,
+            "message": f"Successfully downloaded {voice_config['name']} (model + config)",
+            "size": os.path.getsize(voice_path)
+        }
             
     except requests.exceptions.RequestException as e:
         return {"success": False, "error": f"Download failed: {str(e)}"}
@@ -438,20 +464,46 @@ async def toggle_mock_mode(mock_mode: bool = Form(...)):
 @router.post("/announce")
 async def tts_announce(
     text: str = Form(...),
-    language: str = Form(None),
+    language: Optional[str] = Form(None),
+    voice_id: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
-    """Generate TTS audio with automatic language detection"""
+    """Generate TTS audio with automatic language detection.
+
+    Backward compatible with clients that send the selected voice via the 'language' field.
+    If 'voice_id' is provided (or 'language' matches a known voice id), we will use that voice.
+    Otherwise, we will use 'language' as a language code or auto-detect from text.
+    Returns JSON metadata instead of a file attachment.
+    """
     if not text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty")
     
-    # Auto-detect language if not specified
-    if not language:
-        language = detect_language(text)
+    # Resolve requested voice/language
+    requested = voice_id or language
+    selected_voice_cfg = None
+    selected_voice_id = None
+    detected_lang = None
+
+    # Determine voice by explicit id (core or dynamic)
+    if requested:
+        if requested in VOICES:
+            selected_voice_cfg = VOICES[requested]
+            selected_voice_id = requested
+        else:
+            all_voices = fetch_all_voices()
+            if requested in all_voices:
+                selected_voice_cfg = all_voices[requested]
+                selected_voice_id = requested
     
-    # Get voice configuration
-    voice_config = VOICES.get(language, VOICES['en'])
-    voice_path = os.path.abspath(voice_config['path'])
+    # If not found by id, use language (specified or detected)
+    if not selected_voice_cfg:
+        if not language:
+            detected_lang = detect_language(text)
+        lang_code = language or detected_lang or 'en'
+        selected_voice_cfg = VOICES.get(lang_code, VOICES['en'])
+        selected_voice_id = lang_code
+
+    voice_path = os.path.abspath(selected_voice_cfg['path'])
     
     # Create output directory
     os.makedirs("static/sounds", exist_ok=True)
@@ -467,32 +519,74 @@ async def tts_announce(
         
         if create_mock_audio_file(text, output_path):
             # Add to database
-            add_tts_file_to_database(db, output_path, text, language)
-            
-            return FileResponse(
-                output_path, 
-                media_type="audio/wav",
-                headers={"Content-Disposition": f"attachment; filename={output_name}"}
-            )
+            added = add_tts_file_to_database(db, output_path, text, detected_lang or (language or 'en'))
+            return {
+                "success": True,
+                "filename": output_name,
+                "file_path": output_path,
+                "voice": selected_voice_id,
+                "language": detected_lang or language or 'en',
+                "db_saved": bool(added)
+            }
         else:
             raise HTTPException(status_code=500, detail="Mock TTS generation failed")
     
     else:
         # Try real Piper TTS
-        if not os.path.exists(voice_path):
-            raise HTTPException(status_code=500, detail=f"Voice file not found: {voice_path}")
-        
-        # Generate TTS using piper
-        piper_path = os.path.abspath("piper/piper")
+        # Resolve model for the piper CLI:
+        # 1) If a local voice file exists, use its absolute path
+        # 2) Else, if the selected id looks like a piper model id (e.g., en_US-lessac-medium), use it directly
+        # 3) Else, fallback to a default model for the detected/requested language (or English)
+        model_spec = None
+        if os.path.exists(voice_path):
+            model_spec = voice_path
+        else:
+            # Heuristic: model ids often look like ll_CC-name-quality
+            if selected_voice_id and re.match(r"^[a-z]{2}_[A-Z]{2}-.+", selected_voice_id):
+                model_spec = selected_voice_id
+            else:
+                # Try dynamic lookup from voices.json by language code
+                lang_key = (detected_lang or language or 'en')
+                try:
+                    all_voices = fetch_all_voices()
+                    # Filter by exact language_code match
+                    candidates = [
+                        {
+                            'id': key,
+                            **info
+                        }
+                        for key, info in all_voices.items()
+                        if info.get('language_code') == lang_key
+                    ]
+                    # Prefer high > medium > others
+                    def q_rank(q):
+                        order = {'x_high': 5, 'high': 4, 'medium': 3, 'low': 2, 'x_low': 1}
+                        return order.get(q or '', 0)
+                    candidates.sort(key=lambda v: q_rank(v.get('quality')), reverse=True)
+                    if candidates:
+                        model_spec = candidates[0]['id']
+                    else:
+                        model_spec = DEFAULT_PIPER_MODELS.get(lang_key, DEFAULT_PIPER_MODELS.get('en'))
+                except Exception:
+                    model_spec = DEFAULT_PIPER_MODELS.get(lang_key, DEFAULT_PIPER_MODELS.get('en'))
+
+        # Command uses CLI auto-download if given a model id
         cmd = [
-            piper_path,
-            "--model", voice_path,
-            "--output_file", output_path,
-            "--sentence", text
+            "piper",
+            "-m", model_spec,
+            "-f", output_path,
+            "--",
+            text
         ]
         
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            # Allow more time for first-time model auto-download and initialization
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
             if result.returncode != 0:
                 raise HTTPException(
                     status_code=500, 
@@ -500,13 +594,16 @@ async def tts_announce(
                 )
             
             # Add to database
-            add_tts_file_to_database(db, output_path, text, language)
-            
-            return FileResponse(
-                output_path, 
-                media_type="audio/wav",
-                headers={"Content-Disposition": f"attachment; filename={output_name}"}
-            )
+            added = add_tts_file_to_database(db, output_path, text, detected_lang or (language or 'en'))
+            return {
+                "success": True,
+                "filename": output_name,
+                "file_path": output_path,
+                "voice": selected_voice_id,
+                "language": detected_lang or language or 'en',
+                "stderr": result.stderr.strip() if result.stderr else "",
+                "db_saved": bool(added)
+            }
         except subprocess.TimeoutExpired:
             raise HTTPException(status_code=500, detail="TTS generation timed out")
         except Exception as e:
@@ -519,10 +616,12 @@ async def get_available_voices():
     voices_with_status = {}
     for voice_id, voice in VOICES.items():
         voice_path = os.path.abspath(voice['path'])
+        model_exists = os.path.exists(voice_path)
+        cfg_exists = os.path.exists(f"{voice_path}.json")
         voices_with_status[voice_id] = {
             **voice,
-            'exists': os.path.exists(voice_path),
-            'size_bytes': os.path.getsize(voice_path) if os.path.exists(voice_path) else 0
+            'exists': model_exists and cfg_exists,
+            'size_bytes': os.path.getsize(voice_path) if model_exists else 0
         }
     
     # Get all dynamic voices with download status
@@ -530,10 +629,12 @@ async def get_available_voices():
     additional_voices_with_status = {}
     for voice_id, voice in all_voices.items():
         voice_path = os.path.abspath(voice['path'])
+        model_exists = os.path.exists(voice_path)
+        cfg_exists = os.path.exists(f"{voice_path}.json")
         additional_voices_with_status[voice_id] = {
             **voice,
-            'exists': os.path.exists(voice_path),
-            'size_bytes': os.path.getsize(voice_path) if os.path.exists(voice_path) else 0
+            'exists': model_exists and cfg_exists,
+            'size_bytes': os.path.getsize(voice_path) if model_exists else 0
         }
     
     return {
@@ -597,8 +698,25 @@ async def detect_text_language(text: str = Form(...)):
 @router.get("/status")
 async def get_tts_status():
     """Get TTS system status and configuration"""
-    piper_path = os.path.abspath("piper/piper")
-    piper_exists = os.path.exists(piper_path)
+    # Detect availability of pip-installed piper CLI
+    piper_exists = False
+    piper_version = None
+    try:
+        # `piper -h` should succeed if CLI is present
+        help_check = subprocess.run(["piper", "-h"], capture_output=True, text=True, timeout=5)
+        piper_exists = (help_check.returncode == 0)
+        # Try to get version, but only keep it if the call succeeds
+        try:
+            ver_check = subprocess.run(["piper", "--version"], capture_output=True, text=True, timeout=5)
+            if ver_check.returncode == 0:
+                cand = (ver_check.stdout or ver_check.stderr or "").strip()
+                # Use only the first line to keep it concise
+                piper_version = cand.splitlines()[0] if cand else None
+        except Exception:
+            piper_version = None
+    except Exception:
+        piper_exists = False
+        piper_version = None
     
     # Check if voice files exist
     voice_status = {}
@@ -613,12 +731,84 @@ async def get_tts_status():
     
     return {
         "mock_mode": MOCK_TTS_MODE,
-        "piper_executable": {
-            "path": piper_path,
-            "exists": piper_exists,
-            "executable": os.access(piper_path, os.X_OK) if piper_exists else False
+        "piper_cli": {
+            "available": piper_exists,
+            **({"version": piper_version} if piper_version else {})
         },
         "voices": voice_status,
         "output_directory": "static/sounds",
         "note": "Mock mode generates test audio files for development/testing"
     }
+
+@router.post("/cleanup-voices")
+async def cleanup_incomplete_voices():
+    """Remove incomplete voice files in piper/: model without config or config without model."""
+    try:
+        piper_dir = os.path.abspath("piper")
+        if not os.path.isdir(piper_dir):
+            return {"success": True, "removed": 0}
+
+        removed = 0
+        # Collect base names
+        models = set()
+        configs = set()
+        for name in os.listdir(piper_dir):
+            if name.endswith('.onnx'):
+                models.add(name[:-5])  # strip .onnx
+            elif name.endswith('.onnx.json'):
+                configs.add(name[:-10])  # strip .onnx.json
+
+        # Remove orphans
+        for base in models.symmetric_difference(configs):
+            model_path = os.path.join(piper_dir, base + '.onnx')
+            cfg_path = os.path.join(piper_dir, base + '.onnx.json')
+            if os.path.exists(model_path) and base not in configs:
+                try:
+                    os.remove(model_path)
+                    removed += 1
+                except Exception:
+                    pass
+            if os.path.exists(cfg_path) and base not in models:
+                try:
+                    os.remove(cfg_path)
+                    removed += 1
+                except Exception:
+                    pass
+
+        return {"success": True, "removed": removed}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Voice cleanup failed: {str(e)}")
+
+@router.post("/cleanup")
+async def cleanup_tts_records(db: Session = Depends(get_db)):
+    """Remove TTS Sound records whose files no longer exist on disk.
+
+    We consider a record as TTS if:
+    - tags contains 'tts' OR
+    - description contains 'TTS generated' (case-insensitive)
+    """
+    try:
+        removed = 0
+        kept = 0
+        # Fetch candidate sounds
+        candidates = db.query(models.Sound).filter(
+            (models.Sound.tags.ilike('%tts%')) | (models.Sound.description.ilike('%tts generated%'))
+        ).all()
+
+        for sound in candidates:
+            file_path = getattr(sound, 'file_path', None)
+            if not file_path or not os.path.exists(file_path):
+                try:
+                    db.delete(sound)
+                    removed += 1
+                except Exception:
+                    # If delete fails, skip
+                    kept += 1
+            else:
+                kept += 1
+
+        db.commit()
+        return {"success": True, "removed": removed, "kept": kept, "total_examined": len(candidates)}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Cleanup failed: {str(e)}")

@@ -44,6 +44,7 @@ export default function AudioControls() {
     channels: 2,
     bufferSize: 512
   });
+  const [recordingDefaultMode, setRecordingDefaultMode] = useState('browser');
   const [isEnabled, setIsEnabled] = useState(true);
   
   // Audio input states
@@ -102,6 +103,9 @@ export default function AudioControls() {
         }
         if (adminSettings.pagingPreSoundVolume) {
           setPagingSoundVolume(parseInt(adminSettings.pagingPreSoundVolume) || 80);
+        }
+        if (adminSettings.recordingDefaultMode) {
+          setRecordingDefaultMode(adminSettings.recordingDefaultMode);
         }
         // Override audio settings with admin settings if they exist
         if (adminSettings.audioSampleRate || adminSettings.audioBitDepth || 
@@ -187,6 +191,7 @@ export default function AudioControls() {
       // Also save the input device, paging sound, and audio settings to admin settings
       await api.saveAdminSettings({ 
         defaultAudioInputDevice: selectedInput,
+        recordingDefaultMode,
         pagingPreSoundId: selectedPagingSound,
         pagingPreSoundVolume: pagingSoundVolume,
         audioSampleRate: audioSettings.sampleRate,
@@ -294,6 +299,7 @@ export default function AudioControls() {
           </Card>
         </Grid>
 
+
         {/* Audio Input Selection */}
         <Grid item xs={12} md={6}>
           <Card>
@@ -327,6 +333,21 @@ export default function AudioControls() {
                 label="Enable Audio Input"
                 sx={{ mt: 2 }}
               />
+
+              <FormControl fullWidth margin="normal" sx={{ mt: 2 }}>
+                <InputLabel>Default Recording Mode</InputLabel>
+                <Select
+                  value={recordingDefaultMode}
+                  onChange={(e) => setRecordingDefaultMode(e.target.value)}
+                  label="Default Recording Mode"
+                >
+                  <MenuItem value="browser">Browser mic (upload)</MenuItem>
+                  <MenuItem value="server">Server mic</MenuItem>
+                </Select>
+              </FormControl>
+              <Alert severity="info" sx={{ mt: 1 }}>
+                When set to Server mic, the selected Input Device above will be used as default.
+              </Alert>
             </CardContent>
           </Card>
         </Grid>

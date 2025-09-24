@@ -1,16 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Body
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Body, Form
+from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy.orm import Session
 from database import SessionLocal
 import crud, models
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+import asyncio
+from auth.utils import verify_token
 import subprocess
 import threading
 import time
@@ -22,6 +18,14 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 
 router = APIRouter(tags=["paging"])
+
+# FastAPI DB dependency
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 # Global state for paging system
 paging_state = {
@@ -90,7 +94,6 @@ def get_device_capabilities(device_id: str) -> dict:
                     "format": fmt,
                     "channels": channels
                 }
-                
                 if test_audio_format(device_id, format_spec):
                     if rate not in capabilities["sample_rates"]:
                         capabilities["sample_rates"].append(rate)
@@ -98,7 +101,6 @@ def get_device_capabilities(device_id: str) -> dict:
                         capabilities["formats"].append(fmt)
                     if channels not in capabilities["channels"]:
                         capabilities["channels"].append(channels)
-                    
                     # Map format to bit depth
                     if fmt == "S16_LE" and 16 not in capabilities["bit_depths"]:
                         capabilities["bit_depths"].append(16)
@@ -113,6 +115,139 @@ def get_device_capabilities(device_id: str) -> dict:
     capabilities["channels"].sort()
     
     return capabilities
+
+@router.websocket("/ptt-stream")
+async def websocket_push_to_talk_stream(websocket: WebSocket):
+    """WebSocket endpoint to accept client-side mic audio (WebM/Opus) and play on server output.
+
+    Expected client to send binary WebM/Opus chunks (e.g., MediaRecorder with mimeType 'audio/webm;codecs=opus').
+    JWT token must be provided as a 'token' query parameter.
+    """
+    # Authenticate
+    token = websocket.query_params.get("token")
+    if not token or verify_token(token) is None:
+        # Cannot accept first; close with policy violation
+        await websocket.close(code=4401)
+        return
+
+    # Accept connection
+    await websocket.accept()
+
+    # Determine server output device from settings
+    db = SessionLocal()
+    try:
+        from api.audio import get_audio_settings_from_db
+        audio_settings = get_audio_settings_from_db(db)
+    except Exception:
+        audio_settings = {}
+    finally:
+        db.close()
+
+    output_device = audio_settings.get('output', 'default') or 'default'
+
+    # Build playback pipeline depending on OS
+    import platform
+    system_name = platform.system()
+    if system_name == 'Windows':
+        # Use ffplay on Windows to play to default output device
+        # Read from stdin using '-' and let ffplay decode webm/opus
+        ffmpeg_cmd = [
+            'ffplay',
+            '-nodisp',
+            '-autoexit',
+            '-loglevel', 'error',
+            '-i', '-',
+        ]
+    else:
+        # Linux: route to PulseAudio/ALSA as before
+        ffmpeg_cmd = [
+            'ffmpeg',
+            '-fflags', 'nobuffer',
+            '-flags', 'low_delay',
+            '-use_wallclock_as_timestamps', '1',
+            '-f', 'webm',
+            '-i', 'pipe:0',
+        ]
+        # Route to PulseAudio default or specified sink
+        # For ALSA devices specified as 'alsa_card_*', map to hw:card,device
+        pa_output = 'default'
+        alsa_output = None
+        if isinstance(output_device, str) and output_device.startswith('alsa_card_'):
+            parts = output_device.split('_')
+            if len(parts) >= 5:
+                # format: alsa_card_<card>_device_<dev>
+                card = parts[2]
+                dev = parts[4]
+                alsa_output = f"hw:{card},{dev}"
+        # Assemble output section
+        if alsa_output:
+            ffmpeg_cmd += ['-f', 'alsa', '-ac', '1', '-ar', '48000', alsa_output, '-y']
+        else:
+            ffmpeg_cmd += ['-f', 'pulse', '-ac', '1', '-ar', '48000', pa_output, '-y']
+
+    process = None
+    try:
+        process = subprocess.Popen(
+            ffmpeg_cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+        # Update state
+        paging_state["is_live_streaming"] = True
+        paging_state["current_process"] = process
+
+        # Optionally start audio level monitoring (best-effort)
+        try:
+            start_audio_level_monitoring('default')
+        except Exception:
+            pass
+
+        # Receive binary frames and write to ffmpeg stdin
+        while True:
+            try:
+                message = await websocket.receive()
+                if 'bytes' in message and message['bytes'] is not None:
+                    chunk = message['bytes']
+                elif 'text' in message and message['text'] is not None:
+                    # Ignore text keepalives
+                    continue
+                else:
+                    continue
+
+                if process and process.stdin:
+                    try:
+                        process.stdin.write(chunk)
+                        process.stdin.flush()
+                    except BrokenPipeError:
+                        break
+            except WebSocketDisconnect:
+                break
+            except Exception:
+                break
+
+    finally:
+        # Cleanup
+        try:
+            stop_audio_level_monitoring()
+        except Exception:
+            pass
+        paging_state["is_live_streaming"] = False
+        if process:
+            try:
+                if process.stdin:
+                    try:
+                        process.stdin.close()
+                    except Exception:
+                        pass
+                process.terminate()
+                process.wait(timeout=2)
+            except Exception:
+                try:
+                    process.kill()
+                except Exception:
+                    pass
 
 @router.get("/input-devices")
 def get_audio_input_devices():
@@ -234,15 +369,19 @@ def get_announcement_history(db: Session = Depends(get_db), limit: int = 20):
         
         result = []
         for announcement in announcements:
-            # Check if file still exists
-            if os.path.exists(announcement.file_path):
-                file_size = os.path.getsize(announcement.file_path)
+            # Guard against missing/invalid file paths
+            file_path = getattr(announcement, 'file_path', None)
+            if isinstance(file_path, str) and file_path and os.path.exists(file_path):
+                try:
+                    file_size = os.path.getsize(file_path)
+                except Exception:
+                    file_size = None
                 result.append({
                     'id': announcement.id,
                     'name': announcement.name,
-                    'description': announcement.description,
+                    'description': announcement.description or '',
                     'created_at': announcement.created_at.isoformat() if announcement.created_at else datetime.now().isoformat(),
-                    'file_path': announcement.file_path,
+                    'file_path': file_path,
                     'duration': announcement.duration,
                     'file_size': file_size,
                     'tags': announcement.tags
@@ -257,17 +396,15 @@ def get_announcement_history(db: Session = Depends(get_db), limit: int = 20):
 
 @router.post("/announcements/{announcement_id}/play")
 def play_announcement(announcement_id: int, db: Session = Depends(get_db)):
-    """Play a specific announcement"""
+    """Play a specific announcement (any Sound ID) with pre-announcement bell."""
     try:
-        announcement = db.query(models.Sound).filter(
-            models.Sound.id == announcement_id,
-            models.Sound.type == 'announcement'
-        ).first()
+        # Relaxed: allow any sound ID (not only type == 'announcement')
+        announcement = db.query(models.Sound).filter(models.Sound.id == announcement_id).first()
         
         if not announcement:
             raise HTTPException(status_code=404, detail="Announcement not found")
         
-        if not os.path.exists(announcement.file_path):
+        if not announcement.file_path or not os.path.exists(announcement.file_path):
             raise HTTPException(status_code=404, detail="Announcement file not found")
         
         # Get pre-announcement sound duration for proper timing
@@ -287,7 +424,7 @@ def play_announcement(announcement_id: int, db: Session = Depends(get_db)):
             time.sleep(0.8)  # Longer default delay
         
         # Play the announcement using direct audio playback (avoid stop_all_audio conflict)
-        print(f"Now playing recorded announcement: {announcement.file_path}")
+        print(f"Now playing announcement: {announcement.file_path}")
         result = play_recorded_announcement(announcement.file_path)
         
         return {
@@ -297,6 +434,8 @@ def play_announcement(announcement_id: int, db: Session = Depends(get_db)):
             "playback_result": result
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error playing announcement: {str(e)}")
 
@@ -420,11 +559,22 @@ def start_recording(
 
         # Use ffmpeg to record audio directly to WAV
         input_device = device_settings["device_id"]
-        
+
+        # Choose input format based on device_id
+        # If ALSA-style device like 'hw:0,0' is provided, use ALSA. Otherwise default to PulseAudio.
+        if isinstance(input_device, str) and input_device.startswith('hw:'):
+            input_format = 'alsa'
+            input_spec = input_device
+        else:
+            input_format = 'pulse'
+            input_spec = input_device
+
+        print(f"Recording input format: {input_format}, device: {input_spec}")
+
         ffmpeg_cmd = [
             'ffmpeg',
-            '-f', 'pulse', # Use PulseAudio for input
-            '-i', input_device,
+            '-f', input_format,
+            '-i', input_spec,
             '-t', str(duration) if duration else '3600', # Max 1 hour recording
             '-acodec', 'pcm_s16le', # WAV format
             '-ar', str(device_settings["sample_rate"]),
@@ -643,6 +793,91 @@ async def stop_live_stream():
         pass
     
     return {"message": "Live stream stopped successfully"}
+
+# Upload a browser-recorded announcement
+@router.post("/upload-recording")
+async def upload_recording(
+    file: UploadFile = File(...),
+    name: Optional[str] = Form(None),
+    db: Session = Depends(get_db)
+):
+    """Accept a recording uploaded from the browser and save it as an announcement.
+
+    Expects an audio file (e.g., webm/opus or wav). We'll store to static/recordings,
+    convert to wav if needed, compute duration, and register in DB as an announcement.
+    """
+    try:
+        # Prepare paths
+        os.makedirs("static/recordings", exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        original_ext = os.path.splitext(file.filename)[1].lower() if file.filename else ".webm"
+        temp_path = os.path.join("static/recordings", f"upload_{timestamp}{original_ext}")
+        final_wav_path = os.path.join("static/recordings", f"page_{timestamp}.wav")
+
+        # Save uploaded file to temp path
+        with open(temp_path, "wb") as out:
+            contents = await file.read()
+            out.write(contents)
+
+        # If already wav, move; else convert to wav using ffmpeg
+        try:
+            if original_ext == ".wav":
+                os.replace(temp_path, final_wav_path)
+            else:
+                cmd = [
+                    'ffmpeg', '-y',
+                    '-i', temp_path,
+                    '-acodec', 'pcm_s16le',
+                    '-ar', '44100',
+                    '-ac', '1',
+                    final_wav_path
+                ]
+                proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                if proc.returncode != 0 or not os.path.exists(final_wav_path):
+                    stderr = (proc.stderr or '').strip()
+                    raise HTTPException(status_code=500, detail=f"Failed to transcode recording: {stderr}")
+                # Cleanup temp
+                try:
+                    os.remove(temp_path)
+                except Exception:
+                    pass
+        except Exception as e:
+            # Best effort cleanup
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
+            raise HTTPException(status_code=500, detail=f"Error processing recording: {str(e)}")
+
+        # Compute duration
+        duration = get_audio_duration(final_wav_path)
+
+        # Insert into DB as announcement
+        now = datetime.now()
+        announcement = models.Sound(
+            name=name or f"Announcement {now.strftime('%Y-%m-%d %H:%M')}",
+            description="Recorded announcement (browser upload)",
+            file_path=final_wav_path,
+            duration=duration,
+            type="announcement",
+            tags="paging,announcement,upload",
+            created_at=now,
+            updated_at=now
+        )
+        db.add(announcement)
+        db.commit()
+        db.refresh(announcement)
+
+        return {
+            "message": "Recording uploaded and saved",
+            "announcement_id": announcement.id,
+            "file_path": final_wav_path,
+            "duration": duration
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error uploading recording: {str(e)}")
 
 @router.post("/push-to-talk-start")
 def push_to_talk_start(db: Session = Depends(get_db)):

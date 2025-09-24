@@ -50,7 +50,9 @@ export default function AdminPanel({ onSettingsUpdate }) {
     allowedFileTypes: ['mp3', 'wav', 'ogg'],
     ntpEnabled: false,
     ntpServers: 'pool.ntp.org',
-    ntpSyncInterval: '3600'
+    ntpSyncInterval: '3600',
+    recordingDefaultMode: 'browser',
+    recordingDefaultInputDevice: 'default'
   });
 
   const [logoFile, setLogoFile] = useState(null);
@@ -90,7 +92,9 @@ export default function AdminPanel({ onSettingsUpdate }) {
           allowedFileTypes: response.allowedFileTypes ? (Array.isArray(response.allowedFileTypes) ? response.allowedFileTypes : response.allowedFileTypes.split(',')) : ['mp3', 'wav', 'ogg'],
           ntpEnabled: response.ntpEnabled === true || response.ntpEnabled === 'true',
           ntpServers: response.ntpServers || 'pool.ntp.org',
-          ntpSyncInterval: response.ntpSyncInterval || '3600'
+          ntpSyncInterval: response.ntpSyncInterval || '3600',
+          recordingDefaultMode: response.recordingDefaultMode || 'browser',
+          recordingDefaultInputDevice: response.recordingDefaultInputDevice || 'default'
         });
       }
     } catch (error) {
@@ -206,7 +210,9 @@ export default function AdminPanel({ onSettingsUpdate }) {
         allowedFileTypes: settings.allowedFileTypes,
         ntpEnabled: settings.ntpEnabled,
         ntpServers: settings.ntpServers,
-        ntpSyncInterval: settings.ntpSyncInterval
+        ntpSyncInterval: settings.ntpSyncInterval,
+        recordingDefaultMode: settings.recordingDefaultMode,
+        recordingDefaultInputDevice: settings.recordingDefaultInputDevice
       };
       
       await api.saveAdminSettings(settingsToSave);
@@ -432,7 +438,7 @@ export default function AdminPanel({ onSettingsUpdate }) {
                 inputProps={{ min: 1, max: 100 }}
               />
 
-              <Divider sx={{ my: 2 }} />
+              
               
               <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
                 Network Time Protocol (NTP)

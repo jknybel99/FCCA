@@ -1,4 +1,11 @@
 # School Bell System
+![Last Commit](https://img.shields.io/github/last-commit/jknybel99/FCCA)
+![License](https://img.shields.io/github/license/jknybel99/FCCA)
+![Open Issues](https://img.shields.io/github/issues/jknybel99/FCCA)
+![Branch](https://img.shields.io/badge/branch-main-blue)
+![Backend CI](https://github.com/jknybel99/FCCA/actions/workflows/backend-ci.yml/badge.svg)
+![Frontend CI](https://github.com/jknybel99/FCCA/actions/workflows/frontend-ci.yml/badge.svg)
+![CodeQL](https://github.com/jknybel99/FCCA/actions/workflows/codeql.yml/badge.svg)
 
 A comprehensive school bell scheduling system with automated scheduling, audio management, system monitoring, and user authentication.
 

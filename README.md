@@ -245,6 +245,15 @@ Note: `.env` files are ignored by Git by default (see `.gitignore`).
 - **Audio Monitoring**: Real-time audio levels only display during active recording or streaming
 - **Certificates**: Local reverse-proxy certificates under `caddy certs/` are machine-specific and ignored
 
+## 🔐 Certificate Installation Guide
+
+- For instructions on installing the local root CA on client devices (Windows, macOS, iOS, Android, Firefox), open:
+  - `docs/certificate-installation.html` (static file in this repo)
+  - Or if served by your reverse proxy: `https://<your-host>/docs/certificate-installation.html`
+- Direct root CA download (as provided by your environment): `https://localhost/root-ca.crt`
+
+This helps clients trust your local HTTPS endpoints when using a private CA.
+
 ## 🔧 **Troubleshooting**
 
 ### **TTS Issues**

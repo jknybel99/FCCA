@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Install Root Certificate - School Bell System</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #111827;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --brand: #2563eb;
+      --accent: #22c55e;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; background: radial-gradient(1200px 800px at 20% -10%, #1f2937 0, var(--bg) 60%); color: var(--text); }
+    .container { max-width: 980px; margin: 0 auto; padding: 32px 20px 64px; }
+    .hero { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
+    .badge { display: inline-flex; align-items: center; gap: 8px; background: #0b1220; border: 1px solid #1f2937; color: var(--muted); padding: 8px 12px; border-radius: 999px; font-size: 12px; }
+    h1 { margin: 8px 0 0; font-size: 28px; letter-spacing: 0.2px; }
+    p.lead { margin: 8px 0 0; color: var(--muted); }
+    .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; margin-top: 28px; }
+    .card { grid-column: span 12; background: linear-gradient(180deg, rgba(31,41,55,0.7), rgba(17,24,39,0.9)); border: 1px solid #1f2937; border-radius: 14px; padding: 18px; }
+    .card h2 { margin: 0 0 8px; font-size: 18px; }
+    .card p { margin: 6px 0 8px; color: var(--muted); font-size: 14px; }
+    .card ol, .card ul { margin: 8px 0 0 18px; }
+    .card li { margin: 6px 0; }
+    .cta { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 16px; background: #0b1220; border: 1px dashed #1f2937; border-radius: 12px; margin-top: 10px; }
+    a.button { display: inline-block; background: var(--brand); color: white; text-decoration: none; padding: 10px 14px; border-radius: 10px; font-weight: 600; }
+    code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: 12px; color: #cbd5e1; }
+    .tip { font-size: 12px; color: var(--muted); margin-top: 6px; }
+    .ok { color: var(--accent); font-weight: 600; }
+    .warn { color: #f59e0b; font-weight: 600; }
+    .foot { margin-top: 36px; text-align: center; color: var(--muted); font-size: 12px; }
+    @media (min-width: 800px) {
+      .card.span6 { grid-column: span 6; }
+      .card.span4 { grid-column: span 4; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="hero">
+      <div class="badge">HTTPS Setup • Certificate Trust</div>
+    </div>
+    <h1>Install the Root Certificate on Client Devices</h1>
+    <p class="lead">Follow the steps below to trust your private Certificate Authority (CA) so browsers accept HTTPS for this system.</p>
+
+    <div class="card">
+      <h2>1) Download the Root Certificate</h2>
+      <p>Click the button to download the root CA certificate from the server. If it doesn’t download, copy the URL and open it directly.</p>
+      <div class="cta">
+        <a class="button" href="/root-ca.crt" download>Download root-ca.crt</a>
+        <div>
+          <div class="mono">URL: <span id="rootUrl">/root-ca.crt</span></div>
+          <div class="tip">If you access this page on a hostname, the same path works (e.g., <span class="mono">https://your.host/root-ca.crt</span>).</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card span6">
+        <h2>Windows (Trusted Root Certification Authorities)</h2>
+        <ol>
+          <li>Open <span class="mono">certmgr.msc</span> or press <span class="mono">Win + R</span> → run <span class="mono">mmc</span>.</li>
+          <li>In MMC: File → Add/Remove Snap-in → Certificates → <strong>Computer account</strong> → Local computer → Finish.</li>
+          <li>Navigate to <strong>Trusted Root Certification Authorities</strong> → Certificates.</li>
+          <li>Right‑click → All Tasks → Import… → choose <span class="mono">root-ca.crt</span>.</li>
+          <li>Complete the wizard. Ensure it appears under Trusted Root Certification Authorities.</li>
+          <li>Restart your browser. Visit your site and verify the padlock shows <span class="ok">Connection is secure</span>.</li>
+        </ol>
+        <p class="tip">For Firefox, also import under Settings → Privacy & Security → Certificates → View Certificates… → Authorities → Import.</p>
+      </div>
+
+      <div class="card span6">
+        <h2>macOS (System Keychain)</h2>
+        <ol>
+          <li>Open <strong>Keychain Access</strong>.</li>
+          <li>Select <strong>System</strong> keychain → <strong>Certificates</strong>.</li>
+          <li>File → Import Items… → choose <span class="mono">root-ca.crt</span>.</li>
+          <li>Double‑click the imported certificate → Trust → <strong>Always Trust</strong> (set SSL to Always Trust).</li>
+          <li>Enter admin password if prompted. Restart your browser and revisit the site.</li>
+        </ol>
+      </div>
+
+      <div class="card span6">
+        <h2>iOS (iPhone/iPad)</h2>
+        <ol>
+          <li>On the device, open this page and tap <strong>Download root-ca.crt</strong>.</li>
+          <li>iOS will prompt to review a profile. Go to <strong>Settings → Profile Downloaded</strong> and install it.</li>
+          <li>Then go to <strong>Settings → General → About → Certificate Trust Settings</strong> and enable full trust for the root.</li>
+          <li>Reopen Safari/your browser and test your site.</li>
+        </ol>
+        <p class="tip">If you don’t see "Profile Downloaded", try opening the link in Safari.</p>
+      </div>
+
+      <div class="card span6">
+        <h2>Android</h2>
+        <ol>
+          <li>Copy <span class="mono">root-ca.crt</span> to the device (Downloads is fine).</li>
+          <li>Install via <strong>Settings → Security → Encryption & credentials → Install a certificate → CA certificate</strong>.</li>
+          <li>Select <span class="mono">root-ca.crt</span> and confirm. Reopen the browser and test the site.</li>
+        </ol>
+        <p class="tip">On newer Android versions, user‑installed CAs are not trusted by apps by default; browsers like Chrome will trust for browsing.</p>
+      </div>
+
+      <div class="card span6">
+        <h2>Firefox (independent trust store)</h2>
+        <ol>
+          <li>Open Firefox → Settings → Privacy & Security → Certificates → <strong>View Certificates…</strong>.</li>
+          <li>Authorities → <strong>Import…</strong> → select <span class="mono">root-ca.crt</span>.</li>
+          <li>Enable "Trust this CA to identify websites" and confirm.</li>
+        </ol>
+      </div>
+
+      <div class="card span6">
+        <h2>Verify the Connection</h2>
+        <ul>
+          <li>Visit your site (e.g., <span class="mono">https://your.host</span>). It should show a padlock.</li>
+          <li>Certificate viewer should show a chain <span class="mono">Leaf → Intermediate → Root</span> and say <span class="ok">trusted</span>.</li>
+          <li>If it says <span class="warn">Not secure</span>, clear HSTS/SSL state, restart the browser, and recheck hostname/SANs.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Troubleshooting</h2>
+      <ul>
+        <li><strong>Wrong Hostname:</strong> Ensure your leaf certificate SANs include the exact hostnames or IPs you use.</li>
+        <li><strong>HSTS Cached:</strong> Clear browser HSTS/SSL state (Chrome: <span class="mono">chrome://net-internals/#hsts</span>), then restart.</li>
+        <li><strong>Mixed Content:</strong> Ensure all resources load via HTTPS or same origin.</li>
+        <li><strong>Firefox still warns:</strong> Import the CA into Firefox’s Authorities store.</li>
+      </ul>
+      <div class="tip">Root CA URL detected: <span class="mono" id="absUrl"></span></div>
+    </div>
+
+    <div class="foot">School Bell System • HTTPS Configuration Guide</div>
+  </div>
+
+  <script>
+    // Render absolute root CA URL
+    (function(){
+      try {
+        const abs = new URL('/root-ca.crt', window.location.origin).toString();
+        document.getElementById('absUrl').textContent = abs;
+        document.getElementById('rootUrl').textContent = abs;
+      } catch (e) {}
+    })();
+  </script>
+</body>
+</html>

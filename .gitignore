@@ -49,6 +49,7 @@ static/sounds/*.aac
 static/sounds/*.ogg
 static/sounds/*.flac
 !static/sounds/sample_*
+backend/static/sounds/
 backend/static/sounds/*.mp3
 backend/static/sounds/*.wav
 backend/static/sounds/*.aac
@@ -67,11 +68,15 @@ backend/static/ui/
 backend/test.wav
 backend/static/recordings/
 
-# Large model files
+# Large model and binary files
+backend/piper/
 backend/piper/*.onnx
 backend/piper/models/
 backend/piper/voices/
-backend/piper/*.onnx.json
+backend/piper/*.so*
+backend/piper/piper
+backend/piper/piper_phonemize
+backend/piper/espeak-ng/
 
 # Backup files
 backups/*.zip

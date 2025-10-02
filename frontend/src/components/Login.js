@@ -19,6 +19,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../api';
+import dayjs from 'dayjs';
 
 const Login = () => {
   const [username, setUsername] = useState('');
@@ -70,25 +71,33 @@ const Login = () => {
           console.log('School settings not loaded, using defaults');
         }
 
-        // Load schedules and next event
+        // Load schedules, next event, and resolve today's active schedule (date-specific first)
         try {
-          const [schedules, nextEvent] = await Promise.all([
+          const todayStr = dayjs().format('YYYY-MM-DD');
+          const [schedules, nextEvent, specialForToday] = await Promise.all([
             api.getSchedules(),
-            api.getNextEvent()
+            api.getNextEvent(),
+            api.getSpecialScheduleForDate(todayStr).catch(() => null)
           ]);
-          
+
           console.log('Schedules loaded:', schedules);
           console.log('Next event loaded:', nextEvent);
-          
-          if (schedules && Array.isArray(schedules)) {
-            const activeSchedule = schedules.find(s => s.is_active);
-            console.log('Active schedule:', activeSchedule);
-            
-            setScheduleInfo({ 
-              activeSchedule, 
-              nextBell: nextEvent,
-              currentTime: new Date()
-            });
+          console.log('Special for today:', specialForToday);
+
+          let activeSchedule = null;
+          if (specialForToday && !specialForToday.message) {
+            activeSchedule = { ...specialForToday, is_special: true, override_date: todayStr };
+          } else if (Array.isArray(schedules)) {
+            // Prefer default active schedule
+            activeSchedule = schedules.find(s => s.is_default && s.is_active) || schedules.find(s => s.is_active) || null;
+          }
+
+          setScheduleInfo({
+            activeSchedule,
+            nextBell: nextEvent,
+            currentTime: new Date()
+          });
+          if (Array.isArray(schedules)) {
             setSystemStats(prev => ({
               ...prev,
               totalSchedules: schedules.length

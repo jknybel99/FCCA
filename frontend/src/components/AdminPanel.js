@@ -68,6 +68,8 @@ export default function AdminPanel({ onSettingsUpdate }) {
   const [recentBackups, setRecentBackups] = useState([]);
   const [isCreatingBackup, setIsCreatingBackup] = useState(false);
   const [isLoadingBackups, setIsLoadingBackups] = useState(false);
+  const [backupUploadFile, setBackupUploadFile] = useState(null);
+  const [isUploadingBackup, setIsUploadingBackup] = useState(false);
 
   useEffect(() => {
     loadSettings();
@@ -100,6 +102,69 @@ export default function AdminPanel({ onSettingsUpdate }) {
     } catch (error) {
       console.error('Error loading settings:', error);
       setSnackbar({ open: true, message: 'Error loading settings', severity: 'error' });
+    }
+  };
+
+  const handleDownloadBackup = async (backupFilename) => {
+    try {
+      const res = await api.downloadBackup(backupFilename);
+      const blob = new Blob([res.data], { type: res.headers['content-type'] || 'application/zip' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = backupFilename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      setSnackbar({ open: true, message: `Downloading ${backupFilename}...`, severity: 'info' });
+    } catch (error) {
+      console.error('Error downloading backup:', error);
+      setSnackbar({ open: true, message: 'Error downloading backup', severity: 'error' });
+    }
+  };
+
+  const handleBackupFileChange = (e) => {
+    const file = e.target.files && e.target.files[0] ? e.target.files[0] : null;
+    setBackupUploadFile(file);
+  };
+
+  const handleUploadBackup = async () => {
+    if (!backupUploadFile) {
+      setSnackbar({ open: true, message: 'Please choose a backup file first', severity: 'warning' });
+      return;
+    }
+    setIsUploadingBackup(true);
+    try {
+      await api.uploadBackup(backupUploadFile);
+      setSnackbar({ open: true, message: 'Backup uploaded successfully', severity: 'success' });
+      setBackupUploadFile(null);
+      await loadBackupStatus();
+    } catch (error) {
+      console.error('Error uploading backup:', error);
+      setSnackbar({ open: true, message: 'Error uploading backup', severity: 'error' });
+    } finally {
+      setIsUploadingBackup(false);
+    }
+  };
+
+  const handleUploadAndRestoreBackup = async () => {
+    if (!backupUploadFile) {
+      setSnackbar({ open: true, message: 'Please choose a backup file first', severity: 'warning' });
+      return;
+    }
+    if (!window.confirm('Upload and restore this backup now? It will be extracted to the restore directory.')) return;
+    setIsUploadingBackup(true);
+    try {
+      const response = await api.uploadAndRestoreBackup(backupUploadFile);
+      setSnackbar({ open: true, message: `Backup uploaded and extracted to ${response.restore_directory}`, severity: 'success' });
+      setBackupUploadFile(null);
+      await loadBackupStatus();
+    } catch (error) {
+      console.error('Error uploading/restoring backup:', error);
+      setSnackbar({ open: true, message: 'Error uploading/restoring backup', severity: 'error' });
+    } finally {
+      setIsUploadingBackup(false);
     }
   };
 
@@ -588,6 +653,29 @@ export default function AdminPanel({ onSettingsUpdate }) {
                 </Grid>
               </Grid>
 
+              {/* Upload/Restore from file */}
+              <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Upload/Restore Backup
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <Button component="label" variant="outlined">
+                    Choose Backup File
+                    <input type="file" accept=".zip,.tar,.tar.gz,.tgz" hidden onChange={handleBackupFileChange} />
+                  </Button>
+                  <Typography variant="body2" color="text.secondary">
+                    {backupUploadFile ? backupUploadFile.name : 'No file selected'}
+                  </Typography>
+                  <Box sx={{ flexGrow: 1 }} />
+                  <Button variant="outlined" onClick={handleUploadBackup} disabled={isUploadingBackup || !backupUploadFile}>
+                    {isUploadingBackup ? 'Uploading...' : 'Upload Only'}
+                  </Button>
+                  <Button variant="contained" onClick={handleUploadAndRestoreBackup} disabled={isUploadingBackup || !backupUploadFile}>
+                    {isUploadingBackup ? 'Processing...' : 'Upload & Restore'}
+                  </Button>
+                </Box>
+              </Box>
+
               {/* Backup Status */}
               {backupStatus && (
                 <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
@@ -643,6 +731,14 @@ export default function AdminPanel({ onSettingsUpdate }) {
                         </Typography>
                       </Box>
                       <Box>
+                        <Button 
+                          size="small" 
+                          variant="outlined" 
+                          sx={{ mr: 1 }}
+                          onClick={() => handleDownloadBackup(backup.filename)}
+                        >
+                          Download
+                        </Button>
                         <Button 
                           size="small" 
                           variant="outlined" 

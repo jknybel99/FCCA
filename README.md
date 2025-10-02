@@ -1,11 +1,4 @@
 # School Bell System
-![Last Commit](https://img.shields.io/github/last-commit/jknybel99/FCCA)
-![License](https://img.shields.io/github/license/jknybel99/FCCA)
-![Open Issues](https://img.shields.io/github/issues/jknybel99/FCCA)
-![Branch](https://img.shields.io/badge/branch-main-blue)
-![Backend CI](https://github.com/jknybel99/FCCA/actions/workflows/backend-ci.yml/badge.svg)
-![Frontend CI](https://github.com/jknybel99/FCCA/actions/workflows/frontend-ci.yml/badge.svg)
-![CodeQL](https://github.com/jknybel99/FCCA/actions/workflows/codeql.yml/badge.svg)
 
 A comprehensive school bell scheduling system with automated scheduling, audio management, system monitoring, and user authentication.
 
@@ -78,23 +71,19 @@ This creates:
 ### **Backend Setup**
 
 1. **Navigate to backend directory:**
-   ```bash
-   cd backend
+```bash
+cd backend
    ```
 
 2. **Create virtual environment:**
    ```bash
-   python -m venv venv
-   # Activate
-   # macOS/Linux:
-   source venv/bin/activate
-   # Windows (PowerShell):
-   .\\venv\\Scripts\\Activate.ps1
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
    ```
 
 3. **Install dependencies:**
    ```bash
-   pip install -r requirements.txt
+pip install -r requirements.txt
    ```
 
 4. **Start the server:**
@@ -109,30 +98,61 @@ This creates:
 ### **Frontend Setup**
 
 1. **Navigate to frontend directory:**
-   ```bash
-   cd frontend
+```bash
+cd frontend
    ```
 
 2. **Install dependencies:**
    ```bash
-   npm install
+npm install
    ```
 
 3. **Start the development server:**
    ```bash
-   npm start
-   ```
+npm start
+```
 
-## 🔑 Environment Configuration
+### **Frontend Build & Deploy (served by Caddy)**
 
-- Notification systems use an environment file. A template is provided at:
-  `notification_systems/config.env.example`
-- Copy it to `.env` in the project root or inside `notification_systems/` and update values:
-  - `NOTIFICATION_EMAIL`, `NOTIFICATION_PASSWORD`, `NOTIFICATION_RECIPIENTS`
-  - `PUSHOVER_TOKEN`, `PUSHOVER_USER`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
-  - `BACKEND_URL`, `CHECK_INTERVAL`, `MAX_ERRORS`
+Use this when you want to produce a static production build and have Caddy serve it from `/var/www/audio-frontend/`.
 
-Note: `.env` files are ignored by Git by default (see `.gitignore`).
+1. Build the frontend
+
+```bash
+cd frontend
+# Install deps if needed
+npm install --no-audit --no-fund
+
+# Build optimized static assets into frontend/build/
+npm run build
+```
+
+2. Deploy the build to Caddy's web root
+
+```bash
+# Replace existing static site with freshly built files
+sudo rsync -a --delete "$(pwd)/build/" /var/www/audio-frontend/
+
+# Ensure permissions are correct for the Caddy user (optional, depends on your setup)
+sudo chown -R caddy:caddy /var/www/audio-frontend
+sudo find /var/www/audio-frontend -type d -exec chmod 755 {} +
+sudo find /var/www/audio-frontend -type f -exec chmod 644 {} +
+
+# Reload Caddy (optional for static files, but safe)
+sudo systemctl reload caddy
+```
+
+3. Refresh the browser
+
+```text
+- Perform a hard refresh (Shift+Reload) to bypass cached index.html
+- Alternatively, open a fresh URL like https://your-host/?t=<timestamp>
+```
+
+Notes
+
+- The Caddyfile is already configured to serve the UI from `/var/www/audio-frontend/` and to reverse-proxy API calls at `/api/*` to the FastAPI backend on port 8000.
+- Create React App uses content-hashed filenames for assets; a hard refresh ensures the latest `index.html` is used.
 
 ## 📁 **Project Structure**
 
@@ -243,16 +263,6 @@ Note: `.env` files are ignored by Git by default (see `.gitignore`).
 - **Audio Devices**: USB microphones and webcams are automatically detected and preferred over built-in audio
 - **Settings Persistence**: System settings (including backup frequency) persist across restarts
 - **Audio Monitoring**: Real-time audio levels only display during active recording or streaming
-- **Certificates**: Local reverse-proxy certificates under `caddy certs/` are machine-specific and ignored
-
-## 🔐 Certificate Installation Guide
-
-- For instructions on installing the local root CA on client devices (Windows, macOS, iOS, Android, Firefox), open:
-  - `docs/certificate-installation.html` (static file in this repo)
-  - Or if served by your reverse proxy: `https://<your-host>/docs/certificate-installation.html`
-- Direct root CA download (as provided by your environment): `https://localhost/root-ca.crt`
-
-This helps clients trust your local HTTPS endpoints when using a private CA.
 
 ## 🔧 **Troubleshooting**
 

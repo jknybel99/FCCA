@@ -411,37 +411,28 @@ const Dashboard = () => {
 
   const fetchActiveSchedule = async () => {
     try {
-      const [schedules, specialSchedules] = await Promise.all([
-        api.getSchedules(),
-        api.getSpecialSchedules()
-      ]);
-      
-      // Check if there's an active special schedule for today
       const today = dayjs();
-      const dayOfWeek = today.day() === 0 ? 6 : today.day() - 1; // Convert to 0=Monday, 6=Sunday
-      
-      let activeSpecialSchedule = null;
-      for (const special of specialSchedules) {
-        const specialDay = special.days?.find(day => 
-          day.day_of_week === dayOfWeek && day.is_active
-        );
-        if (specialDay) {
-          activeSpecialSchedule = {
-            ...special,
-            is_special: true,
-            override_date: today.format('YYYY-MM-DD')
-          };
-          break;
-        }
+      const todayStr = today.format('YYYY-MM-DD');
+
+      // 1) Ask backend if a special schedule is set for today (date-specific)
+      const [specialForToday, schedules] = await Promise.all([
+        api.getSpecialScheduleForDate(todayStr).catch(() => null),
+        api.getSchedules()
+      ]);
+
+      if (specialForToday && !specialForToday.message) {
+        // Backend returned a SpecialSchedule object
+        setActiveSchedule({
+          ...specialForToday,
+          is_special: true,
+          override_date: todayStr
+        });
+        return;
       }
-      
-      if (activeSpecialSchedule) {
-        setActiveSchedule(activeSpecialSchedule);
-      } else {
-        // Use regular default schedule
-        const regularSchedule = schedules.find(schedule => schedule.is_default && schedule.is_active);
-        setActiveSchedule(regularSchedule ? { ...regularSchedule, is_special: false } : null);
-      }
+
+      // 2) Fall back to default active schedule
+      const regularSchedule = schedules.find(s => s.is_default && s.is_active);
+      setActiveSchedule(regularSchedule ? { ...regularSchedule, is_special: false } : null);
     } catch (error) {
       console.error('Error fetching active schedule:', error);
     }

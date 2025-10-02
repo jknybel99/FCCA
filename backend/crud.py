@@ -6,8 +6,8 @@ import hashlib
 import os
 
 # Import models and schemas after other imports to avoid circular dependencies
-import models
-import schemas
+from . import models
+from . import schemas
 
 # Sound operations
 def create_sound(db: Session, sound: schemas.SoundCreate, file_path: str):
@@ -782,7 +782,7 @@ def get_scheduled_dates_for_calendar(db: Session, start_date: Optional[date] = N
 # User operations
 def create_user(db: Session, user: schemas.UserCreate):
     """Create a new user."""
-    from auth.utils import get_password_hash
+    from .auth.utils import get_password_hash
     
     hashed_password = get_password_hash(user.password)
     db_user = models.User(
@@ -815,7 +815,7 @@ def get_users(db: Session, skip: int = 0, limit: int = 100):
 
 def authenticate_user(db: Session, username: str, password: str):
     """Authenticate a user."""
-    from auth.utils import verify_password
+    from .auth.utils import verify_password
     
     user = get_user_by_username(db, username)
     if not user:

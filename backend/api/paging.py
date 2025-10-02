@@ -3,10 +3,10 @@ from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy.orm import Session
-from database import SessionLocal
-import crud, models
+from ..database import SessionLocal
+from .. import crud, models
 import asyncio
-from auth.utils import verify_token
+from ..auth.utils import verify_token
 import subprocess
 import threading
 import time
@@ -136,7 +136,7 @@ async def websocket_push_to_talk_stream(websocket: WebSocket):
     # Determine server output device from settings
     db = SessionLocal()
     try:
-        from api.audio import get_audio_settings_from_db
+        from .audio import get_audio_settings_from_db
         audio_settings = get_audio_settings_from_db(db)
     except Exception:
         audio_settings = {}
@@ -722,7 +722,7 @@ def start_live_stream(input_device: str = "default", db: Session = Depends(get_d
     play_pre_announcement_sound(db)
     
     # Get audio output device from settings
-    from api.audio import get_audio_settings_from_db
+    from .audio import get_audio_settings_from_db
     audio_settings = get_audio_settings_from_db(db)
     output_device = audio_settings.get('output', 'default')
     

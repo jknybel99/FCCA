@@ -1,15 +1,15 @@
 from fastapi import APIRouter, Form, HTTPException, Depends
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from database import SessionLocal
-import models
+from ..database import SessionLocal
+from .. import models
 import os
 import uuid
 import subprocess
 import re
 import time
-import crud
-import schemas
+from .. import crud
+from .. import schemas
 from typing import Optional
 import requests
 import json

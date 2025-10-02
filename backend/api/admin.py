@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from database import SessionLocal
-import crud, schemas
+from ..database import SessionLocal
+from .. import crud, schemas
 from typing import List
 import os
 import shutil
@@ -531,7 +531,7 @@ def get_system_info():
 def debug_audio_settings(db: Session = Depends(get_db)):
     """Debug endpoint to check audio settings"""
     try:
-        from api.sound import get_audio_settings_from_db
+        from .sound import get_audio_settings_from_db
         settings = get_audio_settings_from_db(db)
         return {
             "audio_settings": settings,

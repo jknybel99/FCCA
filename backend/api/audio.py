@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from ..database import SessionLocal
-from .. import crud, models
+from database import SessionLocal
+import crud, models
 from typing import Dict, Any
 import subprocess
 import json
@@ -173,7 +173,7 @@ def debug_audio_settings(db: Session = Depends(get_db)):
 @router.get("/test-settings")
 def test_audio_settings(db: Session = Depends(get_db)):
     """Test endpoint to verify audio settings retrieval"""
-    from .sound import get_audio_settings_from_db
+    from api.sound import get_audio_settings_from_db
     settings = get_audio_settings_from_db(db)
     return {
         "settings": settings,

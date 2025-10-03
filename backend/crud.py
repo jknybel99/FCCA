@@ -6,8 +6,8 @@ import hashlib
 import os
 
 # Import models and schemas after other imports to avoid circular dependencies
-from . import models
-from . import schemas
+import models
+import schemas
 
 # Sound operations
 def create_sound(db: Session, sound: schemas.SoundCreate, file_path: str):
@@ -547,83 +547,86 @@ def get_events_for_date(db: Session, target_date: date):
         return regular_events
 
 def get_next_event(db: Session, current_time: time = None):
-    """Get the next scheduled event, prioritizing any SpecialSchedule's linked base schedule for that date."""
+    """Get the next scheduled event from the currently active schedule"""
     if current_time is None:
         current_time = datetime.now().time()
-
+    
     today = date.today()
-
+    
     # Look for events in the next 7 days
     for days_ahead in range(7):
         check_date = today + timedelta(days=days_ahead)
-
+        
         # First, check if there's a special schedule active for this date
         special_schedule = get_special_schedule_for_date(db, check_date)
-
+        
         if special_schedule:
-            # Prefer the base schedule linked to this special schedule
-            base_schedule = get_schedule(db, special_schedule.schedule_id)
-            if base_schedule and base_schedule.is_active:
-                day_of_week = check_date.weekday()
-                schedule_day = db.query(models.ScheduleDay).filter(
-                    models.ScheduleDay.schedule_id == base_schedule.id,
-                    models.ScheduleDay.day_of_week == day_of_week,
-                    models.ScheduleDay.is_active == True
-                ).first()
-                if schedule_day:
-                    events = get_bell_events(db, schedule_day.id)
-                    future_events = [e for e in events if (e.time > current_time) or days_ahead > 0]
-                    if future_events:
-                        future_events.sort(key=lambda x: x.time)
-                        next_event = future_events[0]
-                        next_event.scheduled_date = check_date
-                        next_event.days_from_now = days_ahead
-                        return next_event
-
-            # Fallback to explicit special bell events if present
+            # Get events from special schedule
             special_events = get_special_bell_events(db, special_schedule.id)
-            if special_events:
-                future_events = [e for e in special_events if (e.time > current_time) or days_ahead > 0]
-                if future_events:
-                    future_events.sort(key=lambda x: x.time)
-                    se = future_events[0]
-
-                    class MockEvent:
-                        def __init__(self, special_event, target_date, days_ahead):
-                            self.id = special_event.id
-                            self.time = special_event.time
-                            self.description = special_event.description
-                            self.sound_id = special_event.sound_id
-                            self.tts_text = special_event.tts_text
-                            self.repeat_tag = special_event.repeat_tag
-                            self.is_active = special_event.is_active
-                            self.sound = special_event.sound
-                            self.scheduled_date = target_date
-                            self.days_from_now = days_ahead
-
-                    return MockEvent(se, check_date, days_ahead)
+            
+            # For today, only include future events; for future days, include all events
+            if days_ahead == 0:
+                future_events = [event for event in special_events if event.time > current_time]
+            else:
+                future_events = special_events
+            
+            if future_events:
+                # Sort by time and get the earliest
+                future_events.sort(key=lambda x: x.time)
+                next_event = future_events[0]
+                
+                # Create a mock event object with required attributes
+                class MockEvent:
+                    def __init__(self, special_event, target_date, days_ahead):
+                        self.id = special_event.id
+                        self.time = special_event.time
+                        self.description = special_event.description
+                        self.sound_id = special_event.sound_id
+                        self.tts_text = special_event.tts_text
+                        self.repeat_tag = special_event.repeat_tag
+                        self.is_active = special_event.is_active
+                        self.sound = special_event.sound
+                        self.scheduled_date = target_date
+                        self.days_from_now = days_ahead
+                
+                mock_event = MockEvent(next_event, check_date, days_ahead)
+                return mock_event
         else:
-            # Use default schedule for this day
+            # Use regular schedule for this day
             schedule = get_default_schedule(db)
             if not schedule:
                 continue
-
+            
+            # Get day of week (0=Monday, 6=Sunday)
             day_of_week = check_date.weekday()
+            
+            # Get schedule day
             schedule_day = db.query(models.ScheduleDay).filter(
                 models.ScheduleDay.schedule_id == schedule.id,
                 models.ScheduleDay.day_of_week == day_of_week,
                 models.ScheduleDay.is_active == True
             ).first()
+            
             if not schedule_day:
                 continue
-
+            
             regular_events = get_bell_events(db, schedule_day.id)
-            future_events = [event for event in regular_events if (event.time > current_time) or days_ahead > 0]
+            
+            # For today, only include future events; for future days, include all events
+            if days_ahead == 0:
+                future_events = [event for event in regular_events if event.time > current_time]
+            else:
+                future_events = regular_events
+            
             if future_events:
+                # Sort by time and get the earliest
                 future_events.sort(key=lambda x: x.time)
                 next_event = future_events[0]
+                
+                # Add date information to the event
                 next_event.scheduled_date = check_date
                 next_event.days_from_now = days_ahead
+                
                 return next_event
     
     return None
@@ -779,7 +782,7 @@ def get_scheduled_dates_for_calendar(db: Session, start_date: Optional[date] = N
 # User operations
 def create_user(db: Session, user: schemas.UserCreate):
     """Create a new user."""
-    from .auth.utils import get_password_hash
+    from auth.utils import get_password_hash
     
     hashed_password = get_password_hash(user.password)
     db_user = models.User(
@@ -812,7 +815,7 @@ def get_users(db: Session, skip: int = 0, limit: int = 100):
 
 def authenticate_user(db: Session, username: str, password: str):
     """Authenticate a user."""
-    from .auth.utils import verify_password
+    from auth.utils import verify_password
     
     user = get_user_by_username(db, username)
     if not user:

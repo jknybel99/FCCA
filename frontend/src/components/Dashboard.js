@@ -411,28 +411,42 @@ const Dashboard = () => {
 
   const fetchActiveSchedule = async () => {
     try {
+      const [schedules, specialSchedules] = await Promise.all([
+        api.getSchedules(),
+        api.getSpecialSchedules()
+      ]);
+      
+      // Check if there's an active special schedule for today based on scheduled_dates
       const today = dayjs();
       const todayStr = today.format('YYYY-MM-DD');
-
-      // 1) Ask backend if a special schedule is set for today (date-specific)
-      const [specialForToday, schedules] = await Promise.all([
-        api.getSpecialScheduleForDate(todayStr).catch(() => null),
-        api.getSchedules()
-      ]);
-
-      if (specialForToday && !specialForToday.message) {
-        // Backend returned a SpecialSchedule object
-        setActiveSchedule({
-          ...specialForToday,
-          is_special: true,
-          override_date: todayStr
-        });
-        return;
+      
+      let activeSpecialSchedule = null;
+      for (const special of specialSchedules) {
+        // Check if this special schedule has today in its scheduled_dates
+        if (special.scheduled_dates && special.scheduled_dates.length > 0) {
+          const hasToday = special.scheduled_dates.some(sd => {
+            const schedDate = dayjs(sd.date).format('YYYY-MM-DD');
+            return schedDate === todayStr;
+          });
+          
+          if (hasToday && special.is_active) {
+            activeSpecialSchedule = {
+              ...special,
+              is_special: true,
+              override_date: todayStr
+            };
+            break;
+          }
+        }
       }
-
-      // 2) Fall back to default active schedule
-      const regularSchedule = schedules.find(s => s.is_default && s.is_active);
-      setActiveSchedule(regularSchedule ? { ...regularSchedule, is_special: false } : null);
+      
+      if (activeSpecialSchedule) {
+        setActiveSchedule(activeSpecialSchedule);
+      } else {
+        // Use regular default schedule
+        const regularSchedule = schedules.find(schedule => schedule.is_default && schedule.is_active);
+        setActiveSchedule(regularSchedule ? { ...regularSchedule, is_special: false } : null);
+      }
     } catch (error) {
       console.error('Error fetching active schedule:', error);
     }

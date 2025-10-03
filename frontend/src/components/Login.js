@@ -19,7 +19,6 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../api';
-import dayjs from 'dayjs';
 
 const Login = () => {
   const [username, setUsername] = useState('');
@@ -71,38 +70,57 @@ const Login = () => {
           console.log('School settings not loaded, using defaults');
         }
 
-        // Load schedules, next event, and resolve today's active schedule (date-specific first)
+        // Load schedules and next event
         try {
-          const todayStr = dayjs().format('YYYY-MM-DD');
-          const [schedules, nextEvent, specialForToday] = await Promise.all([
+          const [schedules, specialSchedules, nextEvent] = await Promise.all([
             api.getSchedules(),
-            api.getNextEvent(),
-            api.getSpecialScheduleForDate(todayStr).catch(() => null)
+            api.getSpecialSchedules(),
+            api.getNextEvent()
           ]);
-
+          
           console.log('Schedules loaded:', schedules);
+          console.log('Special schedules loaded:', specialSchedules);
           console.log('Next event loaded:', nextEvent);
-          console.log('Special for today:', specialForToday);
-
+          
+          // Check if there's an active special schedule for today based on scheduled_dates
+          const today = new Date();
+          const todayStr = today.toISOString().split('T')[0]; // YYYY-MM-DD format
+          
           let activeSchedule = null;
-          if (specialForToday && !specialForToday.message) {
-            activeSchedule = { ...specialForToday, is_special: true, override_date: todayStr };
-          } else if (Array.isArray(schedules)) {
-            // Prefer default active schedule
-            activeSchedule = schedules.find(s => s.is_default && s.is_active) || schedules.find(s => s.is_active) || null;
+          
+          // First check for special schedules active today
+          if (specialSchedules && Array.isArray(specialSchedules)) {
+            for (const special of specialSchedules) {
+              if (special.scheduled_dates && special.scheduled_dates.length > 0) {
+                const hasToday = special.scheduled_dates.some(sd => {
+                  const schedDate = typeof sd === 'string' ? sd : sd.date;
+                  return schedDate === todayStr;
+                });
+                
+                if (hasToday && special.is_active) {
+                  activeSchedule = special;
+                  break;
+                }
+              }
+            }
           }
-
-          setScheduleInfo({
-            activeSchedule,
+          
+          // If no special schedule, use regular default schedule
+          if (!activeSchedule && schedules && Array.isArray(schedules)) {
+            activeSchedule = schedules.find(s => s.is_default && s.is_active);
+          }
+          
+          console.log('Active schedule:', activeSchedule);
+          
+          setScheduleInfo({ 
+            activeSchedule, 
             nextBell: nextEvent,
             currentTime: new Date()
           });
-          if (Array.isArray(schedules)) {
-            setSystemStats(prev => ({
-              ...prev,
-              totalSchedules: schedules.length
-            }));
-          }
+          setSystemStats(prev => ({
+            ...prev,
+            totalSchedules: (schedules?.length || 0) + (specialSchedules?.length || 0)
+          }));
         } catch (error) {
           console.log('Schedules not loaded, using defaults:', error);
         }

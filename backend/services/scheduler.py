@@ -153,39 +153,42 @@ class BellScheduler:
                     schedule = crud.get_schedule(db, special.schedule_id)
                     if schedule and schedule.is_active and not schedule.is_muted:
                         # Iterate through scheduled dates for this special schedule
+                        # Pass the special schedule object, not the base schedule
                         for scheduled_date in special.scheduled_dates:
-                            self._schedule_special_day(scheduled_date, schedule)
+                            self._schedule_special_day(scheduled_date, special)
                         
         except Exception as e:
             logger.error(f"Error scheduling special events: {e}")
         finally:
             db.close()
     
-    def _schedule_special_day(self, scheduled_date_obj, schedule):
-        """Schedule events for a special day"""
+    def _schedule_special_day(self, scheduled_date_obj, special_schedule):
+        """Schedule events for a special day using the special schedule's own events"""
         db = self._get_db()
         try:
-            # Get the day of week for the special date
-            day_of_week = scheduled_date_obj.date.weekday()
+            # Schedule ALL events from ALL active days in the special schedule for this date
+            # Special schedules override the entire day, so we use all configured events
+            events_scheduled = 0
             
-            # Find the corresponding schedule day
-            schedule_day = None
-            for day in schedule.days:
-                if day.day_of_week == day_of_week:
-                    schedule_day = day
-                    break
+            for special_day in special_schedule.days:
+                if special_day.is_active:
+                    # Use the special schedule's own events (SpecialBellEvent)
+                    for event in special_day.events:
+                        if event.is_active:
+                            self._schedule_special_event(event, scheduled_date_obj.date, is_special=True)
+                            events_scheduled += 1
             
-            if schedule_day and schedule_day.is_active:
-                for event in schedule_day.events:
-                    if event.is_active:
-                        self._schedule_special_event(event, scheduled_date_obj.date)
+            if events_scheduled > 0:
+                logger.info(f"Scheduled {events_scheduled} special events for {scheduled_date_obj.date} from special schedule {special_schedule.id}")
+            else:
+                logger.warning(f"No active events found in special schedule {special_schedule.id} for date {scheduled_date_obj.date}")
                         
         except Exception as e:
             logger.error(f"Error scheduling special day {scheduled_date_obj.date}: {e}")
         finally:
             db.close()
     
-    def _schedule_special_event(self, event, target_date):
+    def _schedule_special_event(self, event, target_date, is_special=False):
         """Schedule a single special event"""
         job_id = f"special_event_{event.id}_{target_date}"
         
@@ -201,9 +204,9 @@ class BellScheduler:
             run_date=datetime.combine(target_date, event.time)
         )
         
-        # Add job to scheduler
+        # Add job to scheduler - pass is_special flag to distinguish event types
         self.scheduler.add_job(
-            func=self._trigger_event,
+            func=self._trigger_special_event if is_special else self._trigger_event,
             trigger=trigger,
             args=[event.id],
             id=job_id,
@@ -214,10 +217,18 @@ class BellScheduler:
         logger.info(f"Scheduled special event {event.id} for {target_date} at {event.time}")
     
     def _trigger_event(self, event_id):
-        """Trigger an audio event"""
-        logger.info(f"=== SCHEDULER TRIGGER EVENT CALLED: {event_id} ===")
+        """Trigger a regular audio event"""
+        logger.info(f"=== SCHEDULER TRIGGER REGULAR EVENT CALLED: {event_id} ===")
         db = self._get_db()
         try:
+            # CRITICAL: Check if there's a special schedule active for today
+            # If yes, skip this regular event
+            today = date.today()
+            special_schedule = crud.get_special_schedule_for_specific_date(db, today)
+            if special_schedule:
+                logger.info(f"Skipping regular event {event_id} - special schedule '{special_schedule.name}' is active for {today}")
+                return
+            
             event = crud.get_bell_event(db, event_id)
             if not event or not event.is_active:
                 logger.warning(f"Event {event_id} not found or not active")
@@ -234,7 +245,7 @@ class BellScheduler:
                 logger.warning(f"Schedule not found or muted for event {event_id}")
                 return
             
-            logger.info(f"Triggering event {event_id} at {datetime.now()}")
+            logger.info(f"Triggering regular event {event_id} at {datetime.now()}")
             logger.info(f"Event details: sound_id={event.sound_id}, tts_text={event.tts_text}")
             
             # Play audio based on event type
@@ -249,6 +260,51 @@ class BellScheduler:
                 
         except Exception as e:
             logger.error(f"Error triggering event {event_id}: {e}")
+        finally:
+            db.close()
+    
+    def _trigger_special_event(self, event_id):
+        """Trigger a special audio event (from SpecialBellEvent table)"""
+        logger.info(f"=== SCHEDULER TRIGGER SPECIAL EVENT CALLED: {event_id} ===")
+        db = self._get_db()
+        try:
+            # Get special bell event from database
+            event = db.query(models.SpecialBellEvent).filter(models.SpecialBellEvent.id == event_id).first()
+            if not event or not event.is_active:
+                logger.warning(f"Special event {event_id} not found or not active")
+                return
+            
+            # Check if the special schedule day is active
+            special_day = db.query(models.SpecialScheduleDay).filter(
+                models.SpecialScheduleDay.id == event.special_schedule_day_id
+            ).first()
+            if not special_day or not special_day.is_active:
+                logger.warning(f"Special schedule day not found or not active for event {event_id}")
+                return
+            
+            # Check if the special schedule is active
+            special_schedule = db.query(models.SpecialSchedule).filter(
+                models.SpecialSchedule.id == special_day.special_schedule_id
+            ).first()
+            if not special_schedule or not special_schedule.is_active:
+                logger.warning(f"Special schedule not found or not active for event {event_id}")
+                return
+            
+            logger.info(f"Triggering SPECIAL event {event_id} at {datetime.now()}")
+            logger.info(f"Special event details: sound_id={event.sound_id}, tts_text={event.tts_text}")
+            
+            # Play audio based on event type
+            if event.sound_id:
+                logger.info(f"Playing sound for special event {event_id}")
+                self._play_sound(event.sound)
+            elif event.tts_text:
+                logger.info(f"Playing TTS for special event {event_id}")
+                self._play_tts(event.tts_text)
+            else:
+                logger.warning(f"No sound or TTS for special event {event_id}")
+                
+        except Exception as e:
+            logger.error(f"Error triggering special event {event_id}: {e}")
         finally:
             db.close()
     

@@ -1,8 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Request
-from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from ..database import SessionLocal
-from .. import crud, schemas
+from database import SessionLocal
+import crud, schemas
 from typing import List
 import os
 import shutil
@@ -375,33 +374,6 @@ def list_backups():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error listing backups: {str(e)}")
 
-@router.get("/backup/status")
-def get_backup_status():
-    """Get backup system status and configuration"""
-    try:
-        from backup_system import BackupSystem
-        import os
-        
-        backup_system = BackupSystem()
-        backups = backup_system.list_backups()
-        
-        # Get total size of all backups
-        backup_dir = backup_system.backup_dir
-        if os.path.exists(backup_dir):
-            total_size = sum(backup['size'] for backup in backups)
-            total_size_mb = round(total_size / (1024 * 1024), 2)
-        else:
-            total_size_mb = 0
-        
-        return {
-            "total_backups": len(backups),
-            "total_size_mb": total_size_mb,
-            "backup_directory": backup_dir,
-            "recent_backups": backups[:5] if backups else []
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error getting backup status: {str(e)}")
-
 @router.post("/backup/restore/{backup_filename:path}")
 def restore_backup(backup_filename: str, db: Session = Depends(get_db)):
     """Restore from a backup file"""
@@ -418,6 +390,28 @@ def restore_backup(backup_filename: str, db: Session = Depends(get_db)):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error restoring backup: {str(e)}")
+
+@router.get("/backup/download/{backup_filename:path}")
+def download_backup(backup_filename: str):
+    """Download a backup file"""
+    try:
+        from backup_system import BackupSystem
+        from fastapi.responses import FileResponse
+        import os
+        
+        backup_system = BackupSystem()
+        backup_path = os.path.join(backup_system.backup_dir, backup_filename)
+        
+        if not os.path.exists(backup_path):
+            raise HTTPException(status_code=404, detail="Backup file not found")
+        
+        return FileResponse(
+            path=backup_path,
+            filename=backup_filename,
+            media_type='application/zip'
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error downloading backup: {str(e)}")
 
 @router.delete("/backup/{backup_filename:path}")
 def delete_backup(backup_filename: str, db: Session = Depends(get_db)):
@@ -441,67 +435,32 @@ def delete_backup(backup_filename: str, db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error deleting backup: {str(e)}")
 
-@router.get("/backup/download/{backup_filename:path}")
-def download_backup(backup_filename: str):
-    """Download a backup file as an attachment."""
+@router.get("/backup/status")
+def get_backup_status():
+    """Get backup system status and configuration"""
     try:
         from backup_system import BackupSystem
         import os
         
         backup_system = BackupSystem()
-        backup_dir = os.path.abspath(backup_system.backup_dir)
-        target_path = os.path.abspath(os.path.join(backup_dir, backup_filename))
+        backups = backup_system.list_backups()
         
-        # Prevent path traversal
-        if not target_path.startswith(backup_dir + os.sep) and target_path != backup_dir:
-            raise HTTPException(status_code=400, detail="Invalid backup filename")
-        
-        if not os.path.exists(target_path):
-            raise HTTPException(status_code=404, detail="Backup file not found")
-        
-        return FileResponse(
-            path=target_path,
-            filename=os.path.basename(target_path),
-            media_type="application/zip"
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error downloading backup: {str(e)}")
-
-@router.post("/backup/upload")
-async def upload_backup_file(file: UploadFile = File(...)):
-    """Upload a backup archive to the backup directory (does not restore)."""
-    try:
-        from backup_system import BackupSystem
-        import os
-        import shutil
-        
-        backup_system = BackupSystem()
+        # Get disk space info
         backup_dir = backup_system.backup_dir
-        os.makedirs(backup_dir, exist_ok=True)
+        if os.path.exists(backup_dir):
+            total_size = sum(backup['size'] for backup in backups)
+            total_size_mb = round(total_size / (1024 * 1024), 2)
+        else:
+            total_size_mb = 0
         
-        # Save using safe basename
-        safe_name = os.path.basename(file.filename)
-        dest_path = os.path.join(backup_dir, safe_name)
-        with open(dest_path, "wb") as out_f:
-            shutil.copyfileobj(file.file, out_f)
-        size_bytes = os.path.getsize(dest_path)
-        return {"message": "Backup uploaded successfully", "filename": safe_name, "path": dest_path, "size_bytes": size_bytes}
+        return {
+            "total_backups": len(backups),
+            "total_size_mb": total_size_mb,
+            "backup_directory": backup_dir,
+            "recent_backups": backups[:5] if backups else []
+        }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error uploading backup: {str(e)}")
-
-@router.post("/backup/restore-upload")
-async def upload_and_restore_backup(file: UploadFile = File(...)):
-    """Upload a backup archive and immediately extract it."""
-    try:
-        upload_result = await upload_backup_file(file)  # type: ignore
-        restored = restore_backup(upload_result["filename"])  # type: ignore
-        return {"message": "Backup uploaded and extracted successfully", "upload": upload_result, **restored}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error uploading/restoring backup: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting backup status: {str(e)}")
 
 @router.get("/system-info")
 def get_system_info():
@@ -531,7 +490,7 @@ def get_system_info():
 def debug_audio_settings(db: Session = Depends(get_db)):
     """Debug endpoint to check audio settings"""
     try:
-        from .sound import get_audio_settings_from_db
+        from api.sound import get_audio_settings_from_db
         settings = get_audio_settings_from_db(db)
         return {
             "audio_settings": settings,

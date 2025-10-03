@@ -213,12 +213,6 @@ export default {
     return res.data;
   },
 
-  // Get special schedule for a specific date (YYYY-MM-DD)
-  getSpecialScheduleForDate: async (targetDate) => {
-    const res = await axiosInstance.get(`${API}/schedule/special/date/${targetDate}`);
-    return res.data;
-  },
-
   deleteSpecialSchedule: async (id) => {
     const res = await axiosInstance.delete(`${API}/schedule/special/${id}`);
     return res.data;
@@ -545,37 +539,16 @@ export default {
     return res.data;
   },
 
-  // Download a backup file as a blob
-  downloadBackup: async (backupFilename) => {
-    const res = await axiosInstance.get(`${BASE_URL}/api/admin/backup/download/${encodeURIComponent(backupFilename)}` , {
-      responseType: 'blob'
-    });
-    return res;
-  },
-
-  // Upload a backup archive (does not auto-restore)
-  uploadBackup: async (file) => {
-    const form = new FormData();
-    form.append('file', file);
-    const res = await axiosInstance.post(`${BASE_URL}/api/admin/backup/upload`, form, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    });
-    return res.data;
-  },
-
-  // Upload a backup archive and immediately restore (extract)
-  uploadAndRestoreBackup: async (file) => {
-    const form = new FormData();
-    form.append('file', file);
-    const res = await axiosInstance.post(`${BASE_URL}/api/admin/backup/restore-upload`, form, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    });
-    return res.data;
-  },
-
   getBackupStatus: async () => {
     const res = await axiosInstance.get(`${BASE_URL}/api/admin/backup/status`);
     return res.data;
+  },
+
+  downloadBackup: async (backupFilename) => {
+    const res = await axiosInstance.get(`${BASE_URL}/api/admin/backup/download/${backupFilename}`, {
+      responseType: 'blob'
+    });
+    return res;
   },
 
   // Remove clearCache as it's not functional

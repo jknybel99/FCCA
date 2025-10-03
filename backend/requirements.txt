@@ -10,9 +10,11 @@ jinja2
 piper-tts
 python-jose[cryptography]
 passlib[bcrypt]
+python-multipart
 pydub
 ntplib
 email-validator
 PyJWT
 psutil
 requests
+piper-tts

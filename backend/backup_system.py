@@ -28,7 +28,7 @@ class BackupSystem:
     def __init__(self, backup_dir="backups"):
         self.backup_dir = backup_dir
         self.audio_dir = "static/sounds"
-        self.db_file = "school_bell_system.db"
+        self.db_file = "bell_system.db"
         self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
         # Create backup directory if it doesn't exist

@@ -201,7 +201,7 @@ export default function CalendarView({ onScheduleChange }) {
     
     try {
       // Remove special schedule for this specific date
-      await api.unscheduleSpecialScheduleForDate(dateStr);
+      await api.unscheduleSpecialScheduleForDate({ target_date: dateStr });
       
       setScheduleDialogOpen(false);
       setSelectedDate(null);

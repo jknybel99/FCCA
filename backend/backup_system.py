@@ -260,9 +260,78 @@ class BackupSystem:
                 zipf.extractall(restore_dir)
             
             logger.info(f"Backup extracted to {restore_dir}")
-            logger.info("Manual restoration required - please review files in restore directory")
             
-            return restore_dir
+            # List extracted contents for debugging
+            logger.info(f"Extracted contents: {os.listdir(restore_dir)}")
+            
+            # Look for database in the backup structure
+            # The backup is extracted directly into restore_dir with database/, audio_files/, etc.
+            # Check if database directory exists directly
+            if os.path.exists(os.path.join(restore_dir, 'database')):
+                actual_backup_dir = restore_dir
+                logger.info(f"Using restore_dir directly: {actual_backup_dir}")
+            else:
+                # Look for a subdirectory that might contain the backup
+                backup_dirs = [d for d in os.listdir(restore_dir) 
+                              if os.path.isdir(os.path.join(restore_dir, d)) and d.startswith('backup_')]
+                if backup_dirs:
+                    actual_backup_dir = os.path.join(restore_dir, backup_dirs[0])
+                    logger.info(f"Found backup directory: {actual_backup_dir}")
+                else:
+                    actual_backup_dir = restore_dir
+                    logger.info(f"No backup subdirectory found, using restore_dir: {actual_backup_dir}")
+            
+            # Restore database if it exists
+            db_backup_path = os.path.join(actual_backup_dir, 'database', 'bell_system.db')
+            logger.info(f"Looking for database at: {db_backup_path}")
+            
+            if os.path.exists(db_backup_path):
+                # Close all database connections first
+                from database import engine
+                engine.dispose()
+                
+                # Backup current database
+                current_db = 'bell_system.db'
+                if os.path.exists(current_db):
+                    backup_current = f"{current_db}.before_restore_{self.timestamp}"
+                    shutil.copy2(current_db, backup_current)
+                    logger.info(f"Current database backed up to {backup_current}")
+                
+                # Restore database
+                shutil.copy2(db_backup_path, current_db)
+                logger.info(f"✅ Database restored from {db_backup_path}")
+            else:
+                logger.error(f"❌ Database backup not found at {db_backup_path}")
+                # List what's actually in the database directory
+                db_dir = os.path.join(actual_backup_dir, 'database')
+                if os.path.exists(db_dir):
+                    logger.error(f"Contents of database directory: {os.listdir(db_dir)}")
+                else:
+                    logger.error(f"Database directory does not exist: {db_dir}")
+            
+            # Restore audio files if they exist
+            audio_backup_dir = os.path.join(restore_dir, 'audio_files')
+            if os.path.exists(audio_backup_dir):
+                audio_dir = 'static/sounds'
+                if os.path.exists(audio_dir):
+                    # Backup current audio files
+                    backup_audio_dir = f"{audio_dir}_before_restore_{self.timestamp}"
+                    shutil.copytree(audio_dir, backup_audio_dir)
+                    logger.info(f"Current audio files backed up to {backup_audio_dir}")
+                
+                # Restore audio files
+                for item in os.listdir(audio_backup_dir):
+                    src = os.path.join(audio_backup_dir, item)
+                    dst = os.path.join(audio_dir, item)
+                    if os.path.isfile(src):
+                        shutil.copy2(src, dst)
+                logger.info(f"Audio files restored from {audio_backup_dir}")
+            
+            # Clean up restore directory
+            shutil.rmtree(restore_dir)
+            logger.info("Restore completed successfully")
+            
+            return "Restore completed successfully"
             
         except Exception as e:
             logger.error(f"Restore failed: {e}")

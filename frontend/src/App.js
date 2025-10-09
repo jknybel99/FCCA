@@ -66,15 +66,41 @@ const theme = createTheme({
       main: '#dc004e',
     },
     background: {
-      default: '#fdfcfc',
+      default: 'linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)',
       paper: '#ffffff',
     },
   },
   components: {
     MuiCssBaseline: {
+      styleOverrides: `
+        html, body, #root {
+          background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%) !important;
+          min-height: 100vh;
+          background-attachment: fixed;
+        }
+        body {
+          margin: 0;
+          padding: 0;
+        }
+      `,
+    },
+    MuiPaper: {
       styleOverrides: {
-        body: {
-          backgroundColor: '#fdfcfc',
+        root: {
+          backgroundImage: 'none',
+          boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.15)',
+          backdropFilter: 'blur(4px)',
+          border: '1px solid rgba(255, 255, 255, 0.18)',
+        },
+      },
+    },
+    MuiCard: {
+      styleOverrides: {
+        root: {
+          backgroundImage: 'none',
+          boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.15)',
+          backdropFilter: 'blur(4px)',
+          border: '1px solid rgba(255, 255, 255, 0.18)',
         },
       },
     },
@@ -270,7 +296,7 @@ function AppContent() {
     <ThemeProvider theme={theme}>
       <LocalizationProvider dateAdapter={AdapterDayjs}>
         <CssBaseline />
-        <AppBar position="static">
+        <AppBar position="static" sx={{ bgcolor: '#5c7995' }}>
           <Toolbar>
 
             {/* Mobile menu button */}
@@ -358,7 +384,7 @@ function AppContent() {
         </AppBar>
 
         <Container 
-          maxWidth="lg" 
+          maxWidth="xl" 
           sx={{ 
             mt: isMobile ? 2 : 4, 
             px: isMobile ? 1 : 3,

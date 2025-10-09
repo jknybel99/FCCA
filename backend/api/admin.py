@@ -378,17 +378,23 @@ def list_backups():
 def restore_backup(backup_filename: str, db: Session = Depends(get_db)):
     """Restore from a backup file"""
     try:
+        print(f"🔄 RESTORE INITIATED: {backup_filename}")
         from backup_system import BackupSystem
         
         backup_system = BackupSystem()
-        restore_dir = backup_system.restore_backup(backup_filename)
+        result = backup_system.restore_backup(backup_filename)
+        
+        print(f"✅ RESTORE COMPLETED: {result}")
         
         return {
-            "message": "Backup extracted successfully",
-            "restore_directory": restore_dir,
-            "note": "Manual restoration required - please review files in restore directory"
+            "message": "Backup restored successfully",
+            "result": result,
+            "note": "Please restart the backend server for changes to take effect"
         }
     except Exception as e:
+        print(f"❌ RESTORE FAILED: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error restoring backup: {str(e)}")
 
 @router.get("/backup/download/{backup_filename:path}")

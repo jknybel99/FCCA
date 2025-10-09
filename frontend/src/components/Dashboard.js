@@ -59,6 +59,14 @@ import dayjs from 'dayjs';
 import api from '../api';
 
 const Dashboard = () => {
+  // Helper function to get color based on percentage
+  const getPercentageColor = (percent) => {
+    if (percent >= 90) return '#d32f2f'; // Red for critical (90%+)
+    if (percent >= 75) return '#f57c00'; // Orange for warning (75-89%)
+    if (percent >= 50) return '#fbc02d'; // Yellow for caution (50-74%)
+    return '#388e3c'; // Green for good (<50%)
+  };
+
   const [currentTime, setCurrentTime] = useState(dayjs());
   const [nextEvent, setNextEvent] = useState(null);
   const [systemStatus, setSystemStatus] = useState(null);
@@ -1159,7 +1167,11 @@ const Dashboard = () => {
                       <Typography variant="caption" color="text.secondary" display="block">
                         CPU
                       </Typography>
-                      <Typography variant="body2" fontWeight="bold">
+                      <Typography 
+                        variant="body2" 
+                        fontWeight="bold"
+                        sx={{ color: getPercentageColor(systemStats?.cpu_percent || 0) }}
+                      >
                         {systemStats?.cpu_percent || 0}%
                       </Typography>
                       <Typography variant="caption" color="text.secondary" fontSize="10px">
@@ -1172,7 +1184,11 @@ const Dashboard = () => {
                       <Typography variant="caption" color="text.secondary" display="block">
                         RAM
                       </Typography>
-                      <Typography variant="body2" fontWeight="bold">
+                      <Typography 
+                        variant="body2" 
+                        fontWeight="bold"
+                        sx={{ color: getPercentageColor(systemStats?.memory_percent || 0) }}
+                      >
                         {systemStats?.memory_percent || 0}%
                       </Typography>
                       <Typography variant="caption" color="text.secondary" fontSize="10px">
@@ -1185,7 +1201,11 @@ const Dashboard = () => {
                       <Typography variant="caption" color="text.secondary" display="block">
                         Storage
                       </Typography>
-                      <Typography variant="body2" fontWeight="bold">
+                      <Typography 
+                        variant="body2" 
+                        fontWeight="bold"
+                        sx={{ color: getPercentageColor(systemStats?.disk_percent || 0) }}
+                      >
                         {systemStats?.disk_percent || 0}%
                       </Typography>
                       <Typography variant="caption" color="text.secondary" fontSize="10px">

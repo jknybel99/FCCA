@@ -30,7 +30,8 @@ import {
   Security as SecurityIcon,
   Save as SaveIcon,
   Edit as EditIcon,
-  Upload as UploadIcon
+  Upload as UploadIcon,
+  Download as DownloadIcon
 } from '@mui/icons-material';
 import api from '../api';
 import AudioControls from './AudioControls';
@@ -192,6 +193,82 @@ export default function AdminPanel({ onSettingsUpdate }) {
         console.error('Error deleting backup:', error);
         setSnackbar({ open: true, message: 'Error deleting backup', severity: 'error' });
       }
+    }
+  };
+
+  const handleDownloadBackup = async (backupFilename) => {
+    try {
+      const response = await api.downloadBackup(backupFilename);
+      // Create a blob URL and trigger download
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', backupFilename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      setSnackbar({ open: true, message: 'Backup downloaded successfully', severity: 'success' });
+    } catch (error) {
+      console.error('Error downloading backup:', error);
+      setSnackbar({ open: true, message: 'Error downloading backup', severity: 'error' });
+    }
+  };
+
+  const handleUploadBackup = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    if (!file.name.endsWith('.zip')) {
+      setSnackbar({ open: true, message: 'Please upload a .zip file', severity: 'error' });
+      return;
+    }
+
+    try {
+      setIsLoadingBackups(true);
+      await api.uploadBackup(file);
+      setSnackbar({ open: true, message: 'Backup uploaded successfully', severity: 'success' });
+      await loadBackupStatus(); // Refresh backup list
+    } catch (error) {
+      console.error('Error uploading backup:', error);
+      setSnackbar({ open: true, message: 'Error uploading backup', severity: 'error' });
+    } finally {
+      setIsLoadingBackups(false);
+      // Reset file input
+      event.target.value = '';
+    }
+  };
+
+  const handleUploadAndRestore = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    if (!file.name.endsWith('.zip')) {
+      setSnackbar({ open: true, message: 'Please upload a .zip file', severity: 'error' });
+      return;
+    }
+
+    if (!window.confirm(`Are you sure you want to upload and restore from "${file.name}"? This will extract the backup immediately.`)) {
+      event.target.value = '';
+      return;
+    }
+
+    try {
+      setIsLoadingBackups(true);
+      const response = await api.uploadAndRestoreBackup(file);
+      setSnackbar({ 
+        open: true, 
+        message: `Backup uploaded and extracted to ${response.restore_directory}`, 
+        severity: 'success' 
+      });
+      await loadBackupStatus(); // Refresh backup list
+    } catch (error) {
+      console.error('Error uploading and restoring backup:', error);
+      setSnackbar({ open: true, message: 'Error uploading and restoring backup', severity: 'error' });
+    } finally {
+      setIsLoadingBackups(false);
+      // Reset file input
+      event.target.value = '';
     }
   };
 
@@ -564,7 +641,7 @@ export default function AdminPanel({ onSettingsUpdate }) {
 
               {/* Backup Actions */}
               <Grid container spacing={2} sx={{ mb: 3 }}>
-                <Grid item xs={12} md={6}>
+                <Grid item xs={12} md={4}>
                   <Button 
                     variant="contained" 
                     color="primary" 
@@ -576,15 +653,46 @@ export default function AdminPanel({ onSettingsUpdate }) {
                     {isCreatingBackup ? 'Creating Backup...' : 'Create Manual Backup'}
                   </Button>
                 </Grid>
-                <Grid item xs={12} md={6}>
-                  <Button 
-                    variant="outlined" 
-                    fullWidth
-                    onClick={handleRefreshBackups}
-                    disabled={isLoadingBackups}
-                  >
-                    {isLoadingBackups ? 'Loading...' : 'Refresh Backup List'}
-                  </Button>
+                <Grid item xs={12} md={4}>
+                  <input
+                    accept=".zip"
+                    style={{ display: 'none' }}
+                    id="upload-backup-file"
+                    type="file"
+                    onChange={handleUploadBackup}
+                  />
+                  <label htmlFor="upload-backup-file" style={{ width: '100%' }}>
+                    <Button 
+                      variant="outlined" 
+                      fullWidth
+                      component="span"
+                      disabled={isLoadingBackups}
+                      startIcon={<UploadIcon />}
+                    >
+                      Upload Backup
+                    </Button>
+                  </label>
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <input
+                    accept=".zip"
+                    style={{ display: 'none' }}
+                    id="upload-restore-backup-file"
+                    type="file"
+                    onChange={handleUploadAndRestore}
+                  />
+                  <label htmlFor="upload-restore-backup-file" style={{ width: '100%' }}>
+                    <Button 
+                      variant="outlined" 
+                      color="secondary"
+                      fullWidth
+                      component="span"
+                      disabled={isLoadingBackups}
+                      startIcon={<UploadIcon />}
+                    >
+                      Upload & Restore
+                    </Button>
+                  </label>
                 </Grid>
               </Grid>
 
@@ -643,6 +751,14 @@ export default function AdminPanel({ onSettingsUpdate }) {
                         </Typography>
                       </Box>
                       <Box>
+                        <Button 
+                          size="small" 
+                          variant="outlined" 
+                          sx={{ mr: 1 }}
+                          onClick={() => handleDownloadBackup(backup.filename)}
+                        >
+                          Download
+                        </Button>
                         <Button 
                           size="small" 
                           variant="outlined" 

@@ -392,7 +392,17 @@ class BellScheduler:
                     try:
                         player_cmd = build_player_command(player, playback_file)
                         logger.info(f"Trying player {i+1}: {' '.join(player_cmd)}")
-                        process = subprocess.Popen(player_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        # Capture stderr to see errors
+                        process = subprocess.Popen(player_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        # Wait a moment to see if it fails immediately
+                        import time
+                        time.sleep(0.1)
+                        if process.poll() is not None:
+                            # Process ended immediately, check for errors
+                            stdout, stderr = process.communicate()
+                            if stderr:
+                                logger.warning(f"Player {player} failed: {stderr.decode()}")
+                                continue
                         logger.info(f"Successfully started playback with: {' '.join(player_cmd)}")
                         return  # Success, exit the function
                     except FileNotFoundError:

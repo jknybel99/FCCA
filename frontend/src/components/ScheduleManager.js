@@ -35,7 +35,9 @@ import {
   AccordionSummary,
   AccordionDetails,
   FormControlLabel,
-  Switch
+  Switch,
+  Tabs,
+  Tab
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -46,14 +48,18 @@ import {
   Schedule as ScheduleIcon,
   Event as EventIcon,
   PlayArrow as PlayIcon,
-  Stop as StopIcon
+  Stop as StopIcon,
+  ViewWeek as ViewWeekIcon,
+  Visibility as VisibilityIcon
 } from '@mui/icons-material';
 import { TimePicker } from '@mui/x-date-pickers/TimePicker';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs from 'dayjs';
 import api from '../api';
+import VisualScheduleManager from './VisualScheduleManager';
 
 export default function ScheduleManager() {
+  const [viewMode, setViewMode] = useState(0); // 0 = Advanced Manager, 1 = Visual Manager
   const [defaultSchedule, setDefaultSchedule] = useState(null);
   const [scheduleDays, setScheduleDays] = useState([]);
   const [events, setEvents] = useState([]);
@@ -134,6 +140,18 @@ export default function ScheduleManager() {
 
   useEffect(() => {
     loadData();
+    
+    // Listen for schedule updates from Visual Schedule Manager
+    const handleScheduleUpdate = () => {
+      console.log('Schedule updated, refreshing Advanced Manager...');
+      loadData();
+    };
+    
+    window.addEventListener('scheduleUpdated', handleScheduleUpdate);
+    
+    return () => {
+      window.removeEventListener('scheduleUpdated', handleScheduleUpdate);
+    };
   }, []);
 
   const loadData = async () => {
@@ -818,7 +836,27 @@ export default function ScheduleManager() {
         Schedule Manager
       </Typography>
 
-      {!defaultSchedule ? (
+      {/* View Mode Tabs */}
+      <Paper elevation={0} sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}>
+        <Tabs value={viewMode} onChange={(e, newValue) => setViewMode(newValue)}>
+          <Tab 
+            icon={<ViewWeekIcon />} 
+            label="Advanced Manager" 
+            iconPosition="start"
+          />
+          <Tab 
+            icon={<VisibilityIcon />} 
+            label="Visual View" 
+            iconPosition="start"
+          />
+        </Tabs>
+      </Paper>
+
+      {/* Show Visual Manager */}
+      {viewMode === 1 && <VisualScheduleManager />}
+
+      {/* Show Advanced Manager (existing functionality) */}
+      {viewMode === 0 && !defaultSchedule ? (
         <Card sx={{ mb: 3 }}>
           <CardContent>
             <Typography variant="h6" color="error">
@@ -826,7 +864,7 @@ export default function ScheduleManager() {
             </Typography>
           </CardContent>
         </Card>
-      ) : (
+      ) : viewMode === 0 ? (
         <>
           {/* Regular Schedule Section */}
           <Card sx={{ mb: 3, border: '1px solid #e0e0e0' }}>
@@ -846,7 +884,7 @@ export default function ScheduleManager() {
               >
                 <ScheduleIcon sx={{ fontSize: 28, color: 'white' }} />
                 <Box>
-                  <Typography variant="h5" sx={{ fontWeight: 600, color: 'white' }}>
+                  <Typography variant="h5" sx={{ fontWeight: 600, color: 'white !important' }}>
                 Regular Bells Schedule
               </Typography>
                   <Typography variant="body2" sx={{ color: '#e3f2fd' }}>
@@ -1284,7 +1322,7 @@ export default function ScheduleManager() {
               >
                 <EventIcon sx={{ fontSize: 28, color: 'white' }} />
                 <Box>
-                  <Typography variant="h5" sx={{ fontWeight: 600, color: 'white' }}>
+                  <Typography variant="h5" sx={{ fontWeight: 600, color: 'white !important' }}>
                 Special Event Schedules
               </Typography>
                   <Typography variant="body2" sx={{ color: '#c8e6c9' }}>
@@ -1403,7 +1441,7 @@ export default function ScheduleManager() {
                     </Box>
                     
                     <List>
-                      {specialEvents[special.id]?.map((event) => (
+                      {specialEvents[special.id]?.sort((a, b) => a.time.localeCompare(b.time)).map((event) => (
                         <ListItem 
                           key={event.id}
                           sx={{ 
@@ -1603,7 +1641,7 @@ export default function ScheduleManager() {
             </CardContent>
           </Card>
         </>
-      )}
+      ) : null}
 
       {/* Regular Event Dialog */}
       <Dialog open={eventDialogOpen} onClose={() => {

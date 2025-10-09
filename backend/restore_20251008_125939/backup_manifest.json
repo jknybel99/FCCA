@@ -1,0 +1,15 @@
+{
+  "backup_name": "backup_20251008_105936",
+  "timestamp": "20251008_105936",
+  "created_at": "2025-10-08T10:59:36.726164",
+  "system_info": {
+    "python_version": "3.11.2 (main, Apr 28 2025, 14:11:48) [GCC 12.2.0]",
+    "platform": "posix",
+    "current_directory": "/home/techco/Desktop/Audio Server/backend"
+  },
+  "backup_contents": {
+    "database": true,
+    "audio_files": true,
+    "config": false
+  }
+}

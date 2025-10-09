@@ -5,6 +5,9 @@ import crud, schemas
 from typing import List, Optional
 from datetime import date, datetime
 from services.scheduler import bell_scheduler
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -342,6 +345,9 @@ def schedule_special_schedule_for_date(
     db: Session = Depends(get_db)
 ):
     """Schedule a special schedule for a specific date (not recurring)"""
+    import sys
+    print(f"📅 SCHEDULE REQUEST: {schedule_data}", file=sys.stderr, flush=True)
+    
     special_schedule_id = schedule_data.get("special_schedule_id")
     target_date = schedule_data.get("target_date")
     
@@ -353,11 +359,17 @@ def schedule_special_schedule_for_date(
         if isinstance(target_date, str):
             target_date = datetime.strptime(target_date, "%Y-%m-%d").date()
         
+        print(f"📅 Scheduling special schedule {special_schedule_id} for {target_date}", file=sys.stderr, flush=True)
+        
         # Schedule the special schedule for the target date
         result = crud.schedule_special_schedule_for_date(db, special_schedule_id, target_date)
         bell_scheduler.refresh_schedule()
+        
+        print(f"📅 Schedule result: {result}", file=sys.stderr, flush=True)
+        
         return {"message": f"Special schedule scheduled for {target_date}", "success": result}
     except Exception as e:
+        print(f"📅 Schedule error: {str(e)}", file=sys.stderr, flush=True)
         raise HTTPException(status_code=500, detail=f"Error scheduling special schedule: {str(e)}")
 
 @router.post("/special/unschedule-date")
@@ -366,21 +378,33 @@ def unschedule_special_schedule_for_date(
     db: Session = Depends(get_db)
 ):
     """Remove special schedule from a specific date (revert to regular)"""
+    import sys
+    print(f"🗓️ UNSCHEDULE CALLED!", file=sys.stderr, flush=True)
+    
     target_date = unschedule_data.get("target_date")
+    
+    print(f"🗓️ UNSCHEDULE REQUEST: {unschedule_data}", file=sys.stderr, flush=True)
+    logger.info(f"🗓️ UNSCHEDULE REQUEST: {unschedule_data}")
     
     if not target_date:
         raise HTTPException(status_code=400, detail="target_date is required")
     
     try:
-        # Parse the date string
+        # Convert string to date if needed
         if isinstance(target_date, str):
             target_date = datetime.strptime(target_date, "%Y-%m-%d").date()
         
+        logger.info(f"🗓️ Removing special schedule from date: {target_date}")
+        
         # Remove the special schedule from the target date
         result = crud.unschedule_special_schedule_for_date(db, target_date)
+        
+        logger.info(f"🗓️ Unschedule result: {result}")
+        
         bell_scheduler.refresh_schedule()
         return {"message": f"Special schedule removed from {target_date}", "success": result}
     except Exception as e:
+        logger.error(f"🗓️ Unschedule error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error removing special schedule: {str(e)}")
 
 @router.get("/special/date/{target_date}")

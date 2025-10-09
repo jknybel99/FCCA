@@ -247,9 +247,10 @@ const Dashboard = () => {
       setCurrentTime(dayjs());
     }, 1000);
 
-    // Update next event every minute
+    // Update next event and active schedule every minute
     const eventInterval = setInterval(() => {
       fetchNextEvent();
+      fetchActiveSchedule();
     }, 60000);
 
     // Update paging status (including audio levels) every 200ms when recording/streaming
@@ -419,6 +420,8 @@ const Dashboard = () => {
 
   const fetchActiveSchedule = async () => {
     try {
+      // Add timestamp to prevent caching
+      const timestamp = Date.now();
       const [schedules, specialSchedules] = await Promise.all([
         api.getSchedules(),
         api.getSpecialSchedules()
@@ -428,23 +431,36 @@ const Dashboard = () => {
       const today = dayjs();
       const todayStr = today.format('YYYY-MM-DD');
       
+      // Find all special schedules that are active AND have today in their scheduled_dates
+      const todaySpecialSchedules = specialSchedules.filter(special => {
+        if (!special.is_active || !special.scheduled_dates || special.scheduled_dates.length === 0) {
+          return false;
+        }
+        
+        // Check if this schedule has today in its dates (handle both string and object formats)
+        const hasToday = special.scheduled_dates.some(sd => {
+          const schedDate = typeof sd === 'string' ? sd : sd.date;
+          // Normalize to YYYY-MM-DD format
+          const normalizedDate = schedDate.split('T')[0]; // Remove time portion if present
+          return normalizedDate === todayStr;
+        });
+        
+        return hasToday;
+      });
+      
+      // Use the first one found (if multiple exist for today, they should be managed by the user)
       let activeSpecialSchedule = null;
-      for (const special of specialSchedules) {
-        // Check if this special schedule has today in its scheduled_dates
-        if (special.scheduled_dates && special.scheduled_dates.length > 0) {
-          const hasToday = special.scheduled_dates.some(sd => {
-            const schedDate = dayjs(sd.date).format('YYYY-MM-DD');
-            return schedDate === todayStr;
-          });
-          
-          if (hasToday && special.is_active) {
-            activeSpecialSchedule = {
-              ...special,
-              is_special: true,
-              override_date: todayStr
-            };
-            break;
-          }
+      if (todaySpecialSchedules.length > 0) {
+        activeSpecialSchedule = {
+          ...todaySpecialSchedules[0],
+          is_special: true,
+          override_date: todayStr
+        };
+        
+        // Log warning if multiple schedules are active for today
+        if (todaySpecialSchedules.length > 1) {
+          console.warn(`Multiple special schedules active for today (${todayStr}):`, 
+            todaySpecialSchedules.map(s => s.name));
         }
       }
       

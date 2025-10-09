@@ -69,6 +69,8 @@ export default function VisualScheduleManager() {
         api.getSchedules(), api.getSpecialSchedules(), api.getAudioFiles()
       ]);
       
+      console.log('🔍 Special Schedules Data:', JSON.stringify(specialSchedulesData, null, 2));
+      
       setSchedules(schedulesData);
       setSpecialSchedules(specialSchedulesData);
       setAudioFiles(audioData);
@@ -604,9 +606,35 @@ export default function VisualScheduleManager() {
               <Typography color="text.secondary">No special schedules found</Typography>
             </Box>
           ) : (
-            specialSchedules.map(special => {
+            specialSchedules
+              .filter(special => special.is_active) // Only show active schedules
+              .map(special => {
               const eventsForSchedule = specialEvents[special.id] || [];
               const scheduledDates = special.scheduled_dates || [];
+              
+              // Remove duplicate dates and only show upcoming dates in current month
+              const today = dayjs();
+              const currentMonth = today.month();
+              const currentYear = today.year();
+              
+              const uniqueDates = scheduledDates.reduce((acc, dateObj) => {
+                const dateStr = typeof dateObj === 'string' ? dateObj : dateObj.date;
+                const date = dayjs(dateStr);
+                const normalizedDateStr = date.format('YYYY-MM-DD');
+                const todayStr = today.format('YYYY-MM-DD');
+                
+                // Only include dates that are today or in the future AND in the current month
+                if (normalizedDateStr >= todayStr && 
+                    date.month() === currentMonth && 
+                    date.year() === currentYear &&
+                    !acc.some(d => {
+                      const existingDateStr = typeof d === 'string' ? d : d.date;
+                      return dayjs(existingDateStr).format('YYYY-MM-DD') === normalizedDateStr;
+                    })) {
+                  acc.push(dateObj);
+                }
+                return acc;
+              }, []);
               
               return (
                 <Card key={special.id} sx={{ mb: 3, boxShadow: 3 }}>
@@ -615,15 +643,18 @@ export default function VisualScheduleManager() {
                       <Box>
                         <Typography variant="h6" sx={{ color: '#00897b' }}>{special.name}</Typography>
                         <Box mt={1} display="flex" gap={1} flexWrap="wrap">
-                          {scheduledDates.map((dateObj, idx) => (
-                            <Chip
-                              key={idx}
-                              icon={<CalendarMonth />}
-                              label={dayjs(dateObj.date).format('MMM D, YYYY')}
-                              size="small"
-                              sx={{ bgcolor: '#b2dfdb', color: '#00695c' }}
-                            />
-                          ))}
+                          {uniqueDates.map((dateObj, idx) => {
+                            const dateStr = typeof dateObj === 'string' ? dateObj : dateObj.date;
+                            return (
+                              <Chip
+                                key={idx}
+                                icon={<CalendarMonth />}
+                                label={dayjs(dateStr).format('MMM D, YYYY')}
+                                size="small"
+                                sx={{ bgcolor: '#b2dfdb', color: '#00695c' }}
+                              />
+                            );
+                          })}
                         </Box>
                       </Box>
                       <Button

@@ -136,7 +136,7 @@ export default {
 
   // Schedules
   getSchedules: async () => {
-    const res = await axiosInstance.get(`${API}/schedule/`);
+    const res = await axiosInstance.get(`${API}/schedule/?_t=${Date.now()}`);
     return res.data;
   },
 
@@ -198,13 +198,18 @@ export default {
 
   getSpecialSchedules: async (startDate = null, endDate = null) => {
     let url = `${API}/schedule/special/`;
-    if (startDate || endDate) {
-      const params = new URLSearchParams();
-      if (startDate) params.append('start_date', startDate);
-      if (endDate) params.append('end_date', endDate);
-      url += `?${params.toString()}`;
-    }
-    const res = await axiosInstance.get(url);
+    const params = new URLSearchParams();
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+    params.append('_t', Date.now()); // Cache buster
+    url += `?${params.toString()}`;
+    const res = await axiosInstance.get(url, {
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
+    });
     return res.data;
   },
 

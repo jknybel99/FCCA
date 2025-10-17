@@ -50,7 +50,7 @@ import {
   ContentCut as CutIcon
 } from '@mui/icons-material';
 import AudioUpload from './AudioUpload';
-import AudioEditor from './AudioEditor';
+import AudioEditorV2 from './AudioEditorV2';
 import api from '../api';
 
 const SOUND_TYPES = [
@@ -509,7 +509,7 @@ export default function AudioLibrary() {
       </Dialog>
 
       {/* Audio Editor Dialog */}
-      <AudioEditor
+      <AudioEditorV2
         open={editorOpen}
         onClose={handleEditorClose}
         audioFile={editingFile}

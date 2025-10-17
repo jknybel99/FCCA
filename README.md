@@ -7,6 +7,7 @@ A comprehensive school bell scheduling system with automated scheduling, audio m
 - **Dashboard**: Real-time system status, clock, and monitoring
 - **Schedule Management**: Create and manage bell schedules (Admin only)
 - **Audio Library**: Upload and manage audio files (Admin only)
+- **Audio Editor**: Professional DAW-like audio editor with waveform visualization (Admin only)
 - **TTS Manager**: Text-to-speech functionality (Admin only)
 - **Paging System**: Live audio announcements with push-to-talk functionality
 - **Calendar View**: Monthly schedule overview
@@ -222,6 +223,16 @@ Notes
 - File categorization (bells, music, announcements)
 - Duration calculation
 - Preview functionality
+
+### **Audio Editor** (Admin Only)
+- **Professional Waveform Visualization**: Visual audio editing with WaveSurfer.js
+- **Drag-to-Trim Regions**: Interactive region selection with gold highlighting
+- **Zoom Controls**: Zoom in/out for precise editing
+- **Gain Adjustment**: Volume control from 50% to 200%
+- **Fade In/Out**: Smooth transitions (0-5 seconds)
+- **Real-time Playback**: Play/pause/stop controls with progress tracking
+- **Non-destructive Editing**: Save edited audio as new files
+- **FFmpeg Processing**: High-quality audio export with all effects applied
 
 ### **TTS Manager** (Admin Only)
 - Text-to-speech generation using Piper TTS

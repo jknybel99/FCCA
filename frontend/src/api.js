@@ -378,6 +378,11 @@ export default {
     return res.data;
   },
 
+  stopSound: async (soundId) => {
+    const res = await axiosInstance.post(`${API}/sounds/${soundId}/stop`);
+    return res.data;
+  },
+
   stopAudio: async () => {
     const res = await axiosInstance.post(`${API}/audio/stop`);
     return res.data;

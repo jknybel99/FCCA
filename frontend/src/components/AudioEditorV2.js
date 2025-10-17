@@ -32,6 +32,7 @@ import {
 } from '@mui/icons-material';
 import WaveSurfer from 'wavesurfer.js';
 import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.esm.js';
+import TimelinePlugin from 'wavesurfer.js/dist/plugins/timeline.esm.js';
 import api from '../api';
 
 const AudioEditorV2 = ({ open, onClose, audioFile, onSave }) => {
@@ -94,6 +95,17 @@ const AudioEditorV2 = ({ open, onClose, audioFile, onSave }) => {
         plugins: [
           RegionsPlugin.create({
             dragSelection: true,
+          }),
+          TimelinePlugin.create({
+            height: 20,
+            insertPosition: 'beforebegin',
+            timeInterval: 5,
+            primaryLabelInterval: 5,
+            secondaryLabelInterval: 5,
+            style: {
+              fontSize: '11px',
+              color: '#2B5876',
+            },
           })
         ]
       });
@@ -139,7 +151,7 @@ const AudioEditorV2 = ({ open, onClose, audioFile, onSave }) => {
         regionRef.current = regions.addRegion({
           start: 0,
           end: dur,
-          color: 'rgba(255, 193, 7, 0.3)',
+          color: 'rgba(255, 0, 0, 0.3)',
           drag: true,
           resize: true,
         });

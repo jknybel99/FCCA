@@ -43,6 +43,7 @@ const AudioEditorV2 = ({ open, onClose, audioFile, onSave }) => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [zoom, setZoom] = useState(50);
+  const [denseTicks, setDenseTicks] = useState(false); // true => 1s markers
   const [gain, setGain] = useState(100);
   const [fadeIn, setFadeIn] = useState(0);
   const [fadeOut, setFadeOut] = useState(0);
@@ -53,6 +54,7 @@ const AudioEditorV2 = ({ open, onClose, audioFile, onSave }) => {
   const [editedName, setEditedName] = useState('');
   const waveformRef = useRef(null);
   const wavesurferRef = useRef(null);
+  const timelineRef = useRef(null);
   const regionRef = useRef(null);
 
   // Initialize WaveSurfer
@@ -79,11 +81,26 @@ const AudioEditorV2 = ({ open, onClose, audioFile, onSave }) => {
       }
 
       // Create WaveSurfer instance
+      const timelinePlugin = TimelinePlugin.create({
+        height: 20,
+        insertPosition: 'beforebegin',
+        timeInterval: 5,
+        primaryLabelInterval: 5,
+        secondaryLabelInterval: 5,
+        style: {
+          fontSize: '11px',
+          color: '#ffffff',
+        },
+      });
+
+      // keep a ref to update label intervals on zoom
+      timelineRef.current = timelinePlugin;
+
       const wavesurfer = WaveSurfer.create({
         container: waveformRef.current,
-        waveColor: '#4a90e2',
-        progressColor: '#1976d2',
-        cursorColor: '#ff5722',
+        waveColor: '#00e676',
+        progressColor: '#66ffa6',
+        cursorColor: '#ffffff',
         barWidth: 2,
         barGap: 1,
         barRadius: 2,
@@ -96,24 +113,14 @@ const AudioEditorV2 = ({ open, onClose, audioFile, onSave }) => {
           RegionsPlugin.create({
             dragSelection: true,
           }),
-          TimelinePlugin.create({
-            height: 20,
-            insertPosition: 'beforebegin',
-            timeInterval: 5,
-            primaryLabelInterval: 5,
-            secondaryLabelInterval: 5,
-            style: {
-              fontSize: '11px',
-              color: '#2B5876',
-            },
-          })
+          timelinePlugin
         ]
       });
 
       wavesurferRef.current = wavesurfer;
 
       // Load audio file
-      const backendUrl = api.getBackendBaseUrl ? api.getBackendBaseUrl() : 'http://localhost:8000';
+      const backendUrl = api.baseUrl;
       let filePath = audioFile.file_path;
       
       console.log('Original file_path:', filePath);
@@ -201,12 +208,34 @@ const AudioEditorV2 = ({ open, onClose, audioFile, onSave }) => {
     };
   }, [open, audioFile]);
 
-  // Update zoom
+  // Update zoom and rebuild timeline when crossing threshold so labels update reliably
   useEffect(() => {
-    if (wavesurferRef.current) {
-      wavesurferRef.current.zoom(zoom);
+    const ws = wavesurferRef.current;
+    if (!ws) return;
+    ws.zoom(zoom);
+
+    const wantDense = zoom > 100;
+    if (wantDense !== denseTicks) {
+      // Recreate the timeline plugin with desired intervals
+      try {
+        if (timelineRef.current && typeof timelineRef.current.destroy === 'function') {
+          timelineRef.current.destroy();
+        }
+      } catch {}
+
+      const newTimeline = TimelinePlugin.create({
+        height: 20,
+        insertPosition: 'beforebegin',
+        timeInterval: wantDense ? 1 : 5,
+        primaryLabelInterval: wantDense ? 1 : 5,
+        secondaryLabelInterval: wantDense ? 1 : 5,
+        style: { fontSize: '11px', color: '#ffffff' },
+      });
+
+      timelineRef.current = ws.registerPlugin(newTimeline);
+      setDenseTicks(wantDense);
     }
-  }, [zoom]);
+  }, [zoom, denseTicks]);
 
   // Update gain (volume) in real-time
   useEffect(() => {
@@ -407,9 +436,9 @@ const AudioEditorV2 = ({ open, onClose, audioFile, onSave }) => {
                 sx={{ 
                   width: '100%', 
                   minHeight: 150,
-                  bgcolor: 'white',
+                  bgcolor: '#000',
                   borderRadius: 1,
-                  border: '1px solid #ddd'
+                  border: '1px solid #333'
                 }}
               />
 

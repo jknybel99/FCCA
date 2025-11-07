@@ -3,6 +3,8 @@ import {
   Box,
   Card,
   CardContent,
+  CardActions,
+  CardMedia,
   Typography,
   Button,
   Grid,
@@ -17,26 +19,16 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
-  Divider,
-  Alert,
-  Paper,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   InputAdornment,
-  Tabs,
-  Tab,
-  Tooltip
+  Tooltip,
+  Avatar,
+  Stack,
+  ToggleButtonGroup,
+  ToggleButton,
+  Fade,
+  Zoom
 } from '@mui/material';
 import {
-  Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
   PlayArrow as PlayIcon,
@@ -45,9 +37,13 @@ import {
   MusicNote as MusicNoteIcon,
   Notifications as NotificationsIcon,
   Schedule as ScheduleIcon,
-  Tag as TagIcon,
   Upload as UploadIcon,
-  ContentCut as CutIcon
+  ContentCut as CutIcon,
+  ViewModule as GridViewIcon,
+  ViewList as ListViewIcon,
+  MoreVert as MoreVertIcon,
+  AccessTime as AccessTimeIcon,
+  Label as LabelIcon
 } from '@mui/icons-material';
 import AudioUpload from './AudioUpload';
 import AudioEditorV2 from './AudioEditorV2';
@@ -73,7 +69,8 @@ export default function AudioLibrary() {
     type: '',
     tags: ''
   });
-  const [currentTab, setCurrentTab] = useState(0);
+  const [viewMode, setViewMode] = useState('table'); // 'grid', 'list', or 'table'
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [playingAudio, setPlayingAudio] = useState(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingFile, setEditingFile] = useState(null);
@@ -118,6 +115,7 @@ export default function AudioLibrary() {
 
   const handleUploadSuccess = () => {
     loadAudioFiles();
+    setUploadDialogOpen(false);
   };
 
   const handleEditFile = (file) => {
@@ -225,239 +223,537 @@ export default function AudioLibrary() {
 
   const stats = getStats();
 
-  return (
-    <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom>
-        Audio Library
+  // Render audio card for grid view
+  const renderAudioCard = (file) => (
+    <Box sx={{ 
+      border: '1px solid', 
+      borderColor: 'divider',
+      transition: 'all 0.2s',
+      '&:hover': {
+        borderColor: 'primary.main',
+        boxShadow: '0 0 0 2px rgba(25, 118, 210, 0.1)'
+      }
+    }}
+    >
+      <CardContent sx={{ flexGrow: 1, p: 1.5, pb: 1 }}>
+        {/* Header Row */}
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+          <Chip
+            label={getTypeLabel(file.type)}
+            size="small"
+            sx={{ 
+              height: 20,
+              fontSize: '0.7rem',
+              backgroundColor: getTypeColor(file.type) + '15',
+              color: getTypeColor(file.type),
+              border: `1px solid ${getTypeColor(file.type)}40`
+            }}
+          />
+          <Box sx={{ display: 'flex', gap: 0.5 }}>
+            <IconButton
+              size="small"
+              onClick={() => handlePlayFile(file.id)}
+              sx={{ 
+                width: 28, 
+                height: 28,
+                color: playingAudio === file.id ? 'secondary.main' : 'success.main',
+                '&:hover': { bgcolor: playingAudio === file.id ? 'secondary.light' : 'success.light' }
+              }}
+            >
+              {playingAudio === file.id ? <StopIcon fontSize="small" /> : <PlayIcon fontSize="small" />}
+            </IconButton>
+          </Box>
+        </Box>
+
+        {/* File Name */}
+        <Tooltip title={file.name}>
+          <Typography 
+            variant="subtitle2"
+            sx={{ 
+              fontWeight: 700,
+              mb: 0.5,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              fontSize: '0.875rem'
+            }}
+          >
+            {file.name}
+          </Typography>
+        </Tooltip>
+
+        {/* Description */}
+        {file.description && (
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{
+              display: 'block',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              mb: 1
+            }}
+          >
+            {file.description}
+          </Typography>
+        )}
+
+        {/* Duration & Tags */}
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 'auto' }}>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <AccessTimeIcon sx={{ fontSize: 14 }} />
+            {file.duration ? `${Math.floor(file.duration / 60)}:${(file.duration % 60).toString().padStart(2, '0')}` : '-'}
+          </Typography>
+          {file.tags && (
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+              {file.tags.split(',').length} tag{file.tags.split(',').length > 1 ? 's' : ''}
+            </Typography>
+          )}
+        </Box>
+      </CardContent>
+
+      {/* Card Actions */}
+      <Box sx={{ 
+        borderTop: '1px solid', 
+        borderColor: 'divider', 
+        px: 1, 
+        py: 0.5,
+        display: 'flex',
+        justifyContent: 'flex-end',
+        gap: 0.5
+      }}>
+        <Tooltip title="Edit Info">
+          <IconButton 
+            size="small" 
+            onClick={() => handleEditFile(file)} 
+            sx={{ 
+              width: 28, 
+              height: 28,
+              color: 'primary.main',
+              '&:hover': { bgcolor: 'primary.light', color: 'primary.dark' }
+            }}
+          >
+            <EditIcon sx={{ fontSize: 16 }} />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="Edit Audio">
+          <IconButton 
+            size="small" 
+            onClick={() => handleEditAudio(file)} 
+            sx={{ 
+              width: 28, 
+              height: 28,
+              color: 'info.main',
+              '&:hover': { bgcolor: 'info.light', color: 'info.dark' }
+            }}
+          >
+            <CutIcon sx={{ fontSize: 16 }} />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="Delete">
+          <IconButton 
+            size="small" 
+            onClick={() => handleDeleteFile(file.id)} 
+            sx={{ 
+              width: 28, 
+              height: 28,
+              color: 'error.main',
+              '&:hover': { bgcolor: 'error.light', color: 'error.dark' }
+            }}
+          >
+            <DeleteIcon sx={{ fontSize: 16 }} />
+          </IconButton>
+        </Tooltip>
+      </Box>
+    </Box>
+  );
+
+  // Render audio list item for list view
+  const renderAudioListItem = (file) => (
+    <Box 
+      key={file.id}
+      sx={{ 
+        display: 'flex',
+        alignItems: 'center',
+        gap: 2,
+        p: 1.5,
+        borderBottom: '1px solid',
+        borderColor: 'divider',
+        '&:hover': {
+          bgcolor: 'action.hover'
+        }
+      }}
+    >
+      {/* Type Badge */}
+      <Chip
+        label={getTypeLabel(file.type)}
+        size="small"
+        sx={{ 
+          height: 22,
+          fontSize: '0.7rem',
+          minWidth: 80,
+          backgroundColor: getTypeColor(file.type) + '15',
+          color: getTypeColor(file.type),
+          border: `1px solid ${getTypeColor(file.type)}40`
+        }}
+      />
+
+      {/* File Info */}
+      <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+        <Typography 
+          variant="body2" 
+          sx={{ 
+            fontWeight: 700,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap'
+          }}
+        >
+          {file.name}
+        </Typography>
+        {file.description && (
+          <Typography 
+            variant="caption" 
+            color="text.secondary"
+            sx={{
+              display: 'block',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            {file.description}
+          </Typography>
+        )}
+      </Box>
+
+      {/* Tags */}
+      {file.tags && (
+        <Box sx={{ display: { xs: 'none', md: 'flex' }, gap: 0.5, flexWrap: 'wrap', maxWidth: 200 }}>
+          {file.tags.split(',').slice(0, 2).map((tag, index) => (
+            <Chip 
+              key={index} 
+              label={tag.trim()} 
+              size="small" 
+              variant="outlined"
+              sx={{ height: 20, fontSize: '0.7rem' }}
+            />
+          ))}
+          {file.tags.split(',').length > 2 && (
+            <Chip 
+              label={`+${file.tags.split(',').length - 2}`}
+              size="small" 
+              variant="outlined"
+              sx={{ height: 20, fontSize: '0.7rem' }}
+            />
+          )}
+        </Box>
+      )}
+
+      {/* Duration */}
+      <Typography variant="caption" color="text.secondary" sx={{ minWidth: 50, textAlign: 'right' }}>
+        {file.duration ? `${Math.floor(file.duration / 60)}:${(file.duration % 60).toString().padStart(2, '0')}` : '-'}
       </Typography>
 
-      {/* Statistics */}
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" color="primary">
-                {stats.total}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Total Files
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" style={{ color: '#f44336' }}>
-                {stats.bell}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Bell Sounds
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" style={{ color: '#2196f3' }}>
-                {stats.music}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Music Files
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" style={{ color: '#4caf50' }}>
-                {stats.announcement + stats.tts}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Announcements
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+      {/* Actions */}
+      <Box sx={{ display: 'flex', gap: 0.5 }}>
+        <IconButton
+          size="small"
+          onClick={() => handlePlayFile(file.id)}
+          sx={{ 
+            width: 32, 
+            height: 32,
+            color: playingAudio === file.id ? 'secondary.main' : 'success.main',
+            '&:hover': { bgcolor: playingAudio === file.id ? 'secondary.light' : 'success.light' }
+          }}
+        >
+          {playingAudio === file.id ? <StopIcon sx={{ fontSize: 18 }} /> : <PlayIcon sx={{ fontSize: 18 }} />}
+        </IconButton>
+        <IconButton 
+          size="small" 
+          onClick={() => handleEditFile(file)} 
+          sx={{ 
+            width: 32, 
+            height: 32,
+            color: 'primary.main',
+            '&:hover': { bgcolor: 'primary.light', color: 'primary.dark' }
+          }}
+        >
+          <EditIcon sx={{ fontSize: 18 }} />
+        </IconButton>
+        <IconButton 
+          size="small" 
+          onClick={() => handleEditAudio(file)} 
+          sx={{ 
+            width: 32, 
+            height: 32,
+            color: 'info.main',
+            '&:hover': { bgcolor: 'info.light', color: 'info.dark' }
+          }}
+        >
+          <CutIcon sx={{ fontSize: 18 }} />
+        </IconButton>
+        <IconButton 
+          size="small" 
+          onClick={() => handleDeleteFile(file.id)} 
+          sx={{ 
+            width: 32, 
+            height: 32,
+            color: 'error.main',
+            '&:hover': { bgcolor: 'error.light', color: 'error.dark' }
+          }}
+        >
+          <DeleteIcon sx={{ fontSize: 18 }} />
+        </IconButton>
+      </Box>
+    </Box>
+  );
 
-      {/* Tabs */}
-      <Paper sx={{ mb: 3 }}>
-        <Tabs value={currentTab} onChange={(e, newValue) => setCurrentTab(newValue)}>
-          <Tab label="All Files" />
-          <Tab label="Upload" />
-        </Tabs>
-      </Paper>
+  return (
+    <Box sx={{ p: 2 }}>
+      {/* Header */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Box>
+          <Typography variant="h5" fontWeight={600}>
+            Audio Library
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            {stats.total} files • {stats.bell} bells • {stats.music} music • {stats.announcement + stats.tts} announcements
+          </Typography>
+        </Box>
+        <Button
+          variant="contained"
+          startIcon={<UploadIcon />}
+          onClick={() => setUploadDialogOpen(true)}
+          sx={{ textTransform: 'none' }}
+        >
+          Upload
+        </Button>
+      </Box>
 
-      {currentTab === 0 && (
-        <>
-          {/* Filters */}
-          <Card sx={{ mb: 3 }}>
-            <CardContent>
-              <Grid container spacing={2} alignItems="center">
-                <Grid item xs={12} md={6}>
-                  <TextField
-                    fullWidth
-                    placeholder="Search files..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <SearchIcon />
-                        </InputAdornment>
-                      ),
-                    }}
-                  />
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <FormControl fullWidth>
-                    <InputLabel>Filter by Type</InputLabel>
-                    <Select
-                      value={selectedType}
-                      onChange={(e) => setSelectedType(e.target.value)}
-                      label="Filter by Type"
-                    >
-                      <MenuItem value="all">All Types</MenuItem>
-                      {SOUND_TYPES.map((type) => (
-                        <MenuItem key={type.value} value={type.value}>
-                          {type.label}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-              </Grid>
-            </CardContent>
-          </Card>
+      {/* Filters and View Toggle */}
+      <Box sx={{ mb: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
+        <TextField
+          placeholder="Search..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon fontSize="small" />
+              </InputAdornment>
+            ),
+          }}
+          size="small"
+          sx={{ flexGrow: 1, maxWidth: 400 }}
+        />
+        <FormControl size="small" sx={{ minWidth: 150 }}>
+          <InputLabel>Type</InputLabel>
+          <Select
+            value={selectedType}
+            onChange={(e) => setSelectedType(e.target.value)}
+            label="Type"
+          >
+            <MenuItem value="all">All Types</MenuItem>
+            {SOUND_TYPES.map((type) => (
+              <MenuItem key={type.value} value={type.value}>
+                {type.label}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        <ToggleButtonGroup
+          value={viewMode}
+          exclusive
+          onChange={(e, newMode) => newMode && setViewMode(newMode)}
+          size="small"
+        >
+          <ToggleButton value="table">
+            <ListViewIcon fontSize="small" />
+          </ToggleButton>
+          <ToggleButton value="grid">
+            <GridViewIcon fontSize="small" />
+          </ToggleButton>
+        </ToggleButtonGroup>
+      </Box>
 
-          {/* Files Table */}
-          <TableContainer component={Paper}>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Type</TableCell>
-                  <TableCell>Name</TableCell>
-                  <TableCell>Tags</TableCell>
-                  <TableCell>Duration</TableCell>
-                  <TableCell>Actions</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {filteredFiles.map((file) => (
-                  <TableRow key={file.id}>
-                    <TableCell>
-                      <Chip
-                        icon={getTypeIcon(file.type)}
-                        label={getTypeLabel(file.type)}
-                        size="small"
-                        style={{ backgroundColor: getTypeColor(file.type), color: 'white' }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      {file.description && (
-                        <Tooltip title={file.description} placement="top-start">
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                            display="block"
-                            sx={{
-                              maxWidth: 400,
-                              whiteSpace: 'nowrap',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis'
-                            }}
-                          >
-                            {file.description}
-                          </Typography>
-                        </Tooltip>
-                      )}
-                      <Typography variant="body2" fontWeight="bold">
-                        {file.name}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      {file.tags && (
-                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                          {file.tags.split(',').map((tag, index) => (
-                            <Chip
-                              key={index}
-                              label={tag.trim()}
-                              size="small"
-                              variant="outlined"
-                            />
-                          ))}
-                        </Box>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2">
-                        {file.duration ? `${Math.floor(file.duration / 60)}:${(file.duration % 60).toString().padStart(2, '0')}` : '-'}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <IconButton
-                        size="small"
-                        onClick={() => handlePlayFile(file.id)}
-                        color={playingAudio === file.id ? 'secondary' : 'primary'}
-                      >
-                        {playingAudio === file.id ? <StopIcon /> : <PlayIcon />}
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        onClick={() => handleEditFile(file)}
-                        color="primary"
-                        title="Edit File Info"
-                      >
-                        <EditIcon />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        onClick={() => handleEditAudio(file)}
-                        color="secondary"
-                        title="Edit Audio (Trim/Fade)"
-                      >
-                        <CutIcon />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        onClick={() => handleDeleteFile(file.id)}
-                        color="error"
-                      >
-                        <DeleteIcon />
-                      </IconButton>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {filteredFiles.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={6} align="center">
-                      <Typography variant="body2" color="text.secondary">
-                        {searchQuery || selectedType !== 'all' 
-                          ? 'No files match your search criteria.' 
-                          : 'No audio files uploaded yet.'}
-                      </Typography>
-                    </TableCell>
-                  </TableRow>
+      {/* Audio Files Display */}
+      {filteredFiles.length === 0 ? (
+        <Box sx={{ textAlign: 'center', py: 6, border: '1px dashed', borderColor: 'divider', borderRadius: 1 }}>
+          <MusicNoteIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
+          <Typography variant="body1" color="text.secondary" gutterBottom>
+            {searchQuery || selectedType !== 'all' 
+              ? 'No files match your search criteria' 
+              : 'No audio files uploaded yet'}
+          </Typography>
+          {!searchQuery && selectedType === 'all' && (
+            <Button
+              variant="outlined"
+              startIcon={<UploadIcon />}
+              onClick={() => setUploadDialogOpen(true)}
+              sx={{ mt: 2, textTransform: 'none' }}
+            >
+              Upload Audio
+            </Button>
+          )}
+        </Box>
+      ) : viewMode === 'table' ? (
+        <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, overflow: 'hidden' }}>
+          <Box sx={{ 
+            display: 'grid', 
+            gridTemplateColumns: '100px 1fr 120px 80px 80px 200px',
+            gap: 1,
+            p: 1,
+            bgcolor: 'primary.main',
+            color: 'primary.contrastText',
+            borderBottom: '2px solid',
+            borderColor: 'primary.dark',
+            fontWeight: 600,
+            fontSize: '0.75rem'
+          }}>
+            <Box>TYPE</Box>
+            <Box>NAME</Box>
+            <Box>DURATION</Box>
+            <Box>SAMPLE RATE</Box>
+            <Box>PLAY</Box>
+            <Box>ACTIONS</Box>
+          </Box>
+          {filteredFiles.map((file, index) => (
+            <Box
+              key={file.id}
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: '100px 1fr 120px 80px 80px 200px',
+                gap: 1,
+                p: 1,
+                alignItems: 'center',
+                borderBottom: index < filteredFiles.length - 1 ? '1px solid' : 'none',
+                borderColor: 'divider',
+                fontSize: '0.813rem',
+                transition: 'background-color 0.2s',
+                '&:hover': {
+                  bgcolor: 'rgba(25, 118, 210, 0.04)'
+                }
+              }}
+            >
+              <Chip
+                label={getTypeLabel(file.type)}
+                size="small"
+                sx={{
+                  height: 20,
+                  fontSize: '0.7rem',
+                  backgroundColor: getTypeColor(file.type) + '15',
+                  color: getTypeColor(file.type),
+                  border: `1px solid ${getTypeColor(file.type)}40`
+                }}
+              />
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="body2" sx={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {file.name}
+                </Typography>
+                {file.description && (
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {file.description}
+                  </Typography>
                 )}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </>
+                {file.tags && (
+                  <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5, flexWrap: 'wrap' }}>
+                    {file.tags.split(',').slice(0, 3).map((tag, i) => (
+                      <Chip key={i} label={tag.trim()} size="small" variant="outlined" sx={{ height: 16, fontSize: '0.65rem' }} />
+                    ))}
+                  </Box>
+                )}
+              </Box>
+              <Typography variant="body2" color="text.secondary">
+                {file.duration ? `${Math.floor(file.duration / 60)}:${(file.duration % 60).toString().padStart(2, '0')}` : '-'}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                44.1kHz
+              </Typography>
+              <IconButton
+                size="small"
+                onClick={() => handlePlayFile(file.id)}
+                sx={{
+                  width: 32,
+                  height: 32,
+                  color: playingAudio === file.id ? 'secondary.main' : 'success.main',
+                  '&:hover': { bgcolor: playingAudio === file.id ? 'secondary.light' : 'success.light' }
+                }}
+              >
+                {playingAudio === file.id ? <StopIcon sx={{ fontSize: 18 }} /> : <PlayIcon sx={{ fontSize: 18 }} />}
+              </IconButton>
+              <Box sx={{ display: 'flex', gap: 0.5 }}>
+                <Tooltip title="Edit Info">
+                  <IconButton 
+                    size="small" 
+                    onClick={() => handleEditFile(file)} 
+                    sx={{ 
+                      width: 28, 
+                      height: 28,
+                      color: 'primary.main',
+                      '&:hover': { bgcolor: 'primary.light', color: 'primary.dark' }
+                    }}
+                  >
+                    <EditIcon sx={{ fontSize: 16 }} />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Edit Audio">
+                  <IconButton 
+                    size="small" 
+                    onClick={() => handleEditAudio(file)} 
+                    sx={{ 
+                      width: 28, 
+                      height: 28,
+                      color: 'info.main',
+                      '&:hover': { bgcolor: 'info.light', color: 'info.dark' }
+                    }}
+                  >
+                    <CutIcon sx={{ fontSize: 16 }} />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Delete">
+                  <IconButton 
+                    size="small" 
+                    onClick={() => handleDeleteFile(file.id)} 
+                    sx={{ 
+                      width: 28, 
+                      height: 28,
+                      color: 'error.main',
+                      '&:hover': { bgcolor: 'error.light', color: 'error.dark' }
+                    }}
+                  >
+                    <DeleteIcon sx={{ fontSize: 16 }} />
+                  </IconButton>
+                </Tooltip>
+              </Box>
+            </Box>
+          ))}
+        </Box>
+      ) : viewMode === 'grid' ? (
+        <Grid container spacing={2}>
+          {filteredFiles.map((file) => (
+            <Grid item xs={12} sm={6} md={4} lg={2.4} xl={2} key={file.id}>
+              {renderAudioCard(file)}
+            </Grid>
+          ))}
+        </Grid>
+      ) : (
+        <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+          {filteredFiles.map((file) => renderAudioListItem(file))}
+        </Box>
       )}
 
-      {currentTab === 1 && (
-        <Card>
-          <CardContent>
-            <Typography variant="h6" gutterBottom>
-              Upload Audio Files
-            </Typography>
-            <AudioUpload onSuccess={handleUploadSuccess} />
-          </CardContent>
-        </Card>
-      )}
+      {/* Upload Dialog */}
+      <Dialog open={uploadDialogOpen} onClose={() => setUploadDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Upload Audio Files</DialogTitle>
+        <DialogContent>
+          <AudioUpload onSuccess={handleUploadSuccess} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setUploadDialogOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Edit File Dialog */}
       <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} maxWidth="sm" fullWidth>

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, Query
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, Query, Header
 from sqlalchemy.orm import Session
 from database import SessionLocal
 import crud, schemas, models
@@ -142,12 +142,12 @@ def get_sound_types(db: Session = Depends(get_db)):
     return sorted(types)
 
 @router.get("/{sound_id}/stream")
-def stream_sound(sound_id: int, db: Session = Depends(get_db)):
-    """Stream audio file for editing/preview"""
-    from fastapi.responses import FileResponse
+async def stream_sound(sound_id: int, db: Session = Depends(get_db), range: str = Header(None)):
+    """Stream audio file for editing/preview with range request support"""
+    from fastapi.responses import StreamingResponse, Response
     import mimetypes
     
-    print(f"Stream endpoint called for sound_id: {sound_id}")
+    print(f"Stream endpoint called for sound_id: {sound_id}, range: {range}")
     
     sound = crud.get_sound(db, sound_id)
     if not sound:
@@ -160,7 +160,7 @@ def stream_sound(sound_id: int, db: Session = Depends(get_db)):
         print(f"File not found at path: {sound.file_path}")
         raise HTTPException(status_code=404, detail="Sound file not found")
     
-    # Get file size for debugging
+    # Get file size
     file_size = os.path.getsize(sound.file_path)
     print(f"File exists, size: {file_size} bytes")
     
@@ -178,21 +178,54 @@ def stream_sound(sound_id: int, db: Session = Depends(get_db)):
     media_type = media_type_map.get(file_extension, 'audio/mpeg')
     print(f"Detected media type: {media_type} for extension: {file_extension}")
     
-    # Return the audio file as a stream
-    response = FileResponse(
-        sound.file_path,
-        media_type=media_type,
-        filename=sound.name
+    # Handle range requests for seeking
+    start = 0
+    end = file_size - 1
+    status_code = 200
+    
+    if range:
+        # Parse range header
+        range_match = range.replace('bytes=', '').split('-')
+        start = int(range_match[0]) if range_match[0] else 0
+        end = int(range_match[1]) if len(range_match) > 1 and range_match[1] else file_size - 1
+        status_code = 206
+        print(f"Range request: bytes {start}-{end}/{file_size}")
+    
+    # Read file chunk
+    def iterfile():
+        with open(sound.file_path, 'rb') as f:
+            f.seek(start)
+            remaining = end - start + 1
+            chunk_size = 8192
+            while remaining > 0:
+                chunk = f.read(min(chunk_size, remaining))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+                yield chunk
+    
+    # Prepare headers
+    headers = {
+        'Content-Type': media_type,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': str(end - start + 1),
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Headers': '*',
+        'Cache-Control': 'no-cache'
+    }
+    
+    if status_code == 206:
+        headers['Content-Range'] = f'bytes {start}-{end}/{file_size}'
+    
+    print(f"Returning streaming response: status={status_code}, range={start}-{end}")
+    
+    return StreamingResponse(
+        iterfile(),
+        status_code=status_code,
+        headers=headers,
+        media_type=media_type
     )
-    
-    # Add CORS headers for audio streaming
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "*"
-    response.headers["Cache-Control"] = "no-cache"
-    
-    print(f"Returning FileResponse for: {sound.file_path}")
-    return response
 
 @router.get("/{sound_id}", response_model=schemas.Sound)
 def get_sound(sound_id: int, db: Session = Depends(get_db)):

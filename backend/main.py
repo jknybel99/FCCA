@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 import os
 import logging
 from datetime import datetime
@@ -41,6 +42,25 @@ os.makedirs("./static/uploads", exist_ok=True)
 os.makedirs("./static/recordings", exist_ok=True)
 app.mount("/sounds", StaticFiles(directory="./static/sounds"), name="sounds")
 app.mount("/static", StaticFiles(directory="./static"), name="static")
+
+# Serve frontend build files
+# Determine build directory from env (Docker) or common local paths
+frontend_build_path = (
+    os.environ.get("FRONTEND_BUILD_DIR")
+    or os.path.join(os.path.dirname(__file__), "../frontend/build")
+)
+
+# If env var not set or missing, try a local fallback copied by Dockerfile
+if not os.path.exists(frontend_build_path):
+    alt_path = os.path.join(os.path.dirname(__file__), "../frontend_build")
+    if os.path.exists(alt_path):
+        frontend_build_path = alt_path
+
+if os.path.exists(frontend_build_path):
+    # Mount static assets (JS, CSS, etc.) from the build folder
+    static_dir = os.path.join(frontend_build_path, "static")
+    if os.path.exists(static_dir):
+        app.mount("/static-frontend", StaticFiles(directory=static_dir), name="static-frontend")
 
 @app.on_event("startup")
 async def startup_event():
@@ -133,6 +153,34 @@ async def get_system_status():
         "system_status": "running" if bell_scheduler.is_running else "stopped",
         "muted": bell_scheduler.is_muted if hasattr(bell_scheduler, 'is_muted') else False
     }
+
+# Catch-all route to serve React app for client-side routing
+# This must be LAST so it doesn't override API routes
+@app.get("/{full_path:path}")
+async def serve_frontend(full_path: str):
+    """Serve the React frontend for all non-API routes"""
+    frontend_build_path = os.path.join(os.path.dirname(__file__), "../frontend/build")
+    
+    # If frontend build doesn't exist, return error message
+    if not os.path.exists(frontend_build_path):
+        return {
+            "error": "Frontend build not found",
+            "message": "Run 'npm run build' in the frontend directory"
+        }
+    
+    # Check if the requested file exists in the build directory
+    file_path = os.path.join(frontend_build_path, full_path)
+    
+    # If it's a file and exists, serve it
+    if os.path.isfile(file_path):
+        return FileResponse(file_path)
+    
+    # Otherwise, serve index.html for client-side routing
+    index_path = os.path.join(frontend_build_path, "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    
+    return {"error": "Frontend not found"}
 
 if __name__ == "__main__":
     import uvicorn

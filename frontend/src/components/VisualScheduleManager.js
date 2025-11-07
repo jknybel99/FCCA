@@ -363,7 +363,16 @@ export default function VisualScheduleManager() {
       if (isSpecialScheduleReplace) {
         for (const event of specialEvents[selectedScheduleForReplace.id] || []) {
           if (event.sound_id === parseInt(oldSoundId)) {
-            await api.updateSpecialBellEvent(event.id, { sound_id: parseInt(newSoundId) });
+            // Include all required fields for special events
+            const updateData = {
+              time: event.time,
+              description: event.description || '',
+              sound_id: parseInt(newSoundId),
+              tts_text: event.tts_text || null,
+              repeat_tag: event.repeat_tag || null,
+              is_active: event.is_active
+            };
+            await api.updateSpecialBellEvent(event.id, updateData);
             count++;
           }
         }
@@ -381,7 +390,8 @@ export default function VisualScheduleManager() {
       setMassReplaceDialogOpen(false);
       loadData();
     } catch (error) {
-      showSnackbar('Error replacing', 'error');
+      console.error('Mass replace error:', error);
+      showSnackbar('Error replacing: ' + (error.response?.data?.detail || error.message), 'error');
     }
   };
 

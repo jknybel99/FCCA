@@ -33,10 +33,12 @@ const AudioEditor = ({ open, onClose, audioFile, onSave }) => {
   const [trimEnd, setTrimEnd] = useState(0);
   const [fadeIn, setFadeIn] = useState(0);
   const [fadeOut, setFadeOut] = useState(0);
-  const [volume, setVolume] = useState(100);
+  const [gain, setGain] = useState(100); // Audio amplification (permanent)
+  const [playbackVolume, setPlaybackVolume] = useState(100); // Playback volume (temporary)
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   
@@ -46,6 +48,8 @@ const AudioEditor = ({ open, onClose, audioFile, onSave }) => {
   const dragTypeRef = useRef(null);
   const lastMouseXRef = useRef(0);
   const animationFrameRef = useRef(null);
+  const progressIntervalRef = useRef(null);
+  const playbackStartTimeRef = useRef(null);
 
   useEffect(() => {
     if (open && audioFile) {
@@ -311,108 +315,228 @@ const AudioEditor = ({ open, onClose, audioFile, onSave }) => {
 
   const playFromTime = async (startTime) => {
     try {
+      console.log('=== playFromTime called with startTime:', startTime);
+      
       // Stop any current playback
-      if (isPlaying) {
-        await stopAudio();
-      }
-      
-      setIsPlaying(true);
-      setError('');
-      setCurrentTime(startTime);
-      
-      // Create new audio element
       if (audioRef.current) {
+        console.log('Stopping existing audio');
         audioRef.current.pause();
         audioRef.current = null;
       }
       
-      audioRef.current = new Audio();
-      audioRef.current.src = `/api/sounds/${audioFile.id}/stream`;
+      setError('');
       
-      audioRef.current.onloadedmetadata = () => {
-        console.log('Audio loaded, setting current time to:', startTime);
-        audioRef.current.currentTime = startTime;
+      // Load MP3 directly from server using the same backend URL as API calls
+      const backendUrl = api.getBackendBaseUrl ? api.getBackendBaseUrl() : 'http://localhost:8000';
+      let filePath = audioFile.file_path;
+      if (filePath.startsWith('static/sounds/')) {
+        filePath = filePath.replace('static/sounds/', '/sounds/');
+      } else if (filePath.startsWith('static/')) {
+        filePath = filePath.replace('static/', '/static/');
+      }
+      
+      const audioUrl = backendUrl + filePath;
+      console.log('Loading MP3 from:', audioUrl, '(backend URL:', backendUrl, ')');
+      
+      const audio = new Audio(audioUrl);
+      audio.volume = playbackVolume / 100;
+      audio.preload = 'auto';
+      
+      console.log('Audio element created - volume:', audio.volume);
+      
+      // CRITICAL: Force unmute and set volume
+      audio.muted = false;
+      audio.volume = 1.0; // Force max volume for testing
+      console.log('Forced audio settings - muted:', audio.muted, 'volume:', audio.volume);
+      
+      // Set up event handlers
+      audio.addEventListener('loadedmetadata', () => {
+        console.log('Audio metadata loaded, duration:', audio.duration);
+        // Seek to start time after metadata is loaded
+        audio.currentTime = startTime;
         setCurrentTime(startTime);
-      };
+      });
       
-      audioRef.current.onended = () => {
+      audio.addEventListener('canplay', () => {
+        console.log('Audio can play');
+      });
+      
+      audio.addEventListener('playing', () => {
+        console.log('Audio is playing - volume:', audio.volume, 'currentTime:', audio.currentTime);
+        setIsPlaying(true);
+      });
+      
+      audio.addEventListener('timeupdate', () => {
+        if (audio && !audio.paused) {
+          setCurrentTime(audio.currentTime);
+          // Stop at trim end
+          if (audio.currentTime >= trimEnd) {
+            audio.pause();
+            setIsPlaying(false);
+            setCurrentTime(trimStart);
+          }
+        }
+      });
+      
+      audio.addEventListener('ended', () => {
         console.log('Audio ended');
         setIsPlaying(false);
         setCurrentTime(trimStart);
-      };
-      
-      audioRef.current.onerror = (e) => {
-        console.error('Audio error:', e);
-        setIsPlaying(false);
-        setError('Failed to play audio');
-      };
-      
-      audioRef.current.onplay = () => {
-        console.log('Audio started playing from:', startTime);
-      };
-      
-      audioRef.current.onpause = () => {
-        console.log('Audio paused');
-      };
-      
-      audioRef.current.onloadeddata = () => {
-        console.log('Audio data loaded, starting playback from:', startTime);
-        audioRef.current.currentTime = startTime;
-        setCurrentTime(startTime);
-        updatePlayhead();
-      };
-      
-      // Wait for audio to load before playing
-      await new Promise((resolve, reject) => {
-        audioRef.current.oncanplay = resolve;
-        audioRef.current.onerror = reject;
-        audioRef.current.load();
+        audioRef.current = null;
       });
       
-      console.log('Starting playback from:', startTime);
-      audioRef.current.currentTime = startTime;
-      setCurrentTime(startTime);
-      await audioRef.current.play();
+      audio.addEventListener('pause', () => {
+        console.log('Audio paused');
+        setIsPlaying(false);
+      });
+      
+      audio.addEventListener('error', (e) => {
+        console.error('Audio error:', e, audio.error);
+        setIsPlaying(false);
+        setError(`Playback error: ${audio.error?.message || 'Unknown error'}`);
+        audioRef.current = null;
+      });
+      
+      // Store reference
+      audioRef.current = audio;
+      
+      // Load and play
+      audio.load();
+      console.log('Audio loading...');
+      
+      // Wait for it to be ready
+      await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Load timeout')), 10000);
+        audio.addEventListener('canplaythrough', () => {
+          clearTimeout(timeout);
+          resolve();
+        }, { once: true });
+        audio.addEventListener('error', () => {
+          clearTimeout(timeout);
+          reject(new Error(audio.error?.message || 'Load failed'));
+        }, { once: true });
+      });
+      
+      // Seek to start position
+      console.log('Seeking to:', startTime);
+      audio.currentTime = startTime;
+      
+      // Start playback
+      console.log('Starting playback...');
+      await audio.play();
+      console.log('Playback started successfully');
+      
+      // Start animation frame for waveform
+      updatePlayhead();
       
     } catch (error) {
-      console.error('Error playing audio from time:', error);
+      console.error('=== playFromTime error:', error);
       setError(`Failed to play: ${error.message}`);
       setIsPlaying(false);
+      
+      if (audioRef.current) {
+        audioRef.current = null;
+      }
     }
   };
 
   const playAudio = async () => {
     if (isPlaying) {
-      await pauseAudio();
+      pauseAudio();
       return;
     }
     
-    // Start playing from current trim start position
-    await playFromTime(trimStart);
+    // Use server-side playback (like Audio Library does)
+    try {
+      console.log('=== playAudio - using server-side playback');
+      setIsPlaying(true);
+      setError('');
+      
+      // Play the full audio file on server
+      await api.playSound(audioFile.id);
+      
+      // Track progress for UI
+      playbackStartTimeRef.current = Date.now();
+      const duration = trimEnd - trimStart;
+      
+      // Clear any existing interval
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+      }
+      
+      // Update progress every 50ms
+      progressIntervalRef.current = setInterval(() => {
+        const elapsed = (Date.now() - playbackStartTimeRef.current) / 1000;
+        const currentPos = trimStart + elapsed;
+        
+        if (currentPos >= trimEnd) {
+          stopAudio();
+        } else {
+          setCurrentTime(currentPos);
+        }
+      }, 50);
+      
+      // Start waveform animation
+      updatePlayhead();
+      
+    } catch (error) {
+      console.error('Playback error:', error);
+      setError('Failed to play audio');
+      setIsPlaying(false);
+    }
   };
 
   const pauseAudio = async () => {
-    console.log('Pausing audio');
-    if (audioRef.current) {
-      audioRef.current.pause();
+    console.log('=== pauseAudio called');
+    
+    // Stop only THIS sound's playback (not all audio)
+    try {
+      await api.stopSound(audioFile.id);
+    } catch (error) {
+      console.error('Error stopping audio:', error);
     }
+    
     setIsPlaying(false);
+    
+    // Clear progress interval
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+      progressIntervalRef.current = null;
+    }
+    
+    // Clear animation frame
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
     }
   };
 
   const stopAudio = async () => {
-    console.log('Stopping audio');
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = trimStart;
+    console.log('=== stopAudio called');
+    
+    // Stop only THIS sound's playback (not all audio)
+    try {
+      await api.stopSound(audioFile.id);
+    } catch (error) {
+      console.error('Error stopping audio:', error);
     }
+    
     setIsPlaying(false);
     setCurrentTime(trimStart);
+    
+    // Clear progress interval
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+      progressIntervalRef.current = null;
+    }
+    
+    // Clear animation frame
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
     }
+    
+    drawWaveform(); // Redraw to clear playhead
   };
 
   const skipToStart = () => {
@@ -432,8 +556,10 @@ const AudioEditor = ({ open, onClose, audioFile, onSave }) => {
   };
 
   const previewTrimmedSection = async () => {
+    console.log('=== previewTrimmedSection called');
+    
     if (isPlaying) {
-      await stopAudio();
+      stopAudio();
       return;
     }
     
@@ -441,38 +567,57 @@ const AudioEditor = ({ open, onClose, audioFile, onSave }) => {
       setIsPlaying(true);
       setError('');
       
-      // Get trimmed audio preview from backend
+      console.log('Requesting trimmed preview:', { audioFileId: audioFile.id, trimStart, trimEnd });
       const audioBlob = await api.trimAudioPreview(audioFile.id, trimStart, trimEnd);
+      console.log('Received audio blob:', audioBlob.size, 'bytes', 'type:', audioBlob.type);
       
       // Create audio URL and play it
       const audioUrl = URL.createObjectURL(audioBlob);
+      console.log('Created blob URL:', audioUrl);
+      
       const audio = new Audio(audioUrl);
+      audio.volume = playbackVolume / 100;
       
-      audio.onended = () => {
+      audio.addEventListener('loadedmetadata', () => {
+        console.log('Trimmed preview metadata loaded, duration:', audio.duration);
+      });
+      
+      audio.addEventListener('canplay', () => {
+        console.log('Trimmed preview can play');
+      });
+      
+      audio.addEventListener('ended', () => {
+        console.log('Trimmed preview ended');
         setIsPlaying(false);
         URL.revokeObjectURL(audioUrl);
-      };
+      });
       
-      audio.onerror = () => {
+      audio.addEventListener('error', (e) => {
+        console.error('Trimmed preview error:', e);
+        console.error('Audio error:', audio.error);
         setIsPlaying(false);
-        setError('Failed to play trimmed preview');
+        setError(`Failed to play trimmed preview: ${audio.error?.message || 'Unknown error'}`);
         URL.revokeObjectURL(audioUrl);
-      };
+      });
       
+      console.log('Starting trimmed preview playback...');
       await audio.play();
+      console.log('Trimmed preview playing');
       
       // Auto-stop after the trimmed duration (as backup)
       const trimmedDuration = trimEnd - trimStart;
       setTimeout(() => {
-        if (isPlaying) {
+        if (audio && !audio.paused) {
+          console.log('Auto-stopping trimmed preview');
           audio.pause();
           setIsPlaying(false);
           URL.revokeObjectURL(audioUrl);
         }
-      }, trimmedDuration * 1000);
+      }, (trimmedDuration + 0.5) * 1000);
       
     } catch (error) {
-      console.error('Error previewing trimmed section:', error);
+      console.error('=== Error previewing trimmed section:', error);
+      console.error('Error stack:', error.stack);
       setError(`Failed to preview: ${error.message}`);
       setIsPlaying(false);
     }
@@ -488,12 +633,12 @@ const AudioEditor = ({ open, onClose, audioFile, onSave }) => {
       setIsPlaying(true);
       setError('');
       
-      console.log('Starting fade preview for file:', audioFile.name, 'type:', audioFile.type);
-      console.log('Fade settings:', { fadeIn, fadeOut, volume, trimStart, trimEnd });
+      console.log('Starting fade preview for file:', audioFile.name);
+      console.log('Fade settings:', { fadeIn, fadeOut, gain, trimStart, trimEnd });
       
-      // For now, use the same approach as trim preview since it works
-      // Get trimmed audio preview from backend (this works)
-      const audioBlob = await api.trimAudioPreview(audioFile.id, trimStart, trimEnd);
+      // Get processed audio with fade effects from backend
+      const audioBlob = await api.fadeAudioPreview(audioFile.id, trimStart, trimEnd, fadeIn, fadeOut, gain);
+      console.log('Received fade preview blob:', audioBlob.size, 'bytes');
       
       // Create audio URL and play it
       const audioUrl = URL.createObjectURL(audioBlob);
@@ -501,65 +646,13 @@ const AudioEditor = ({ open, onClose, audioFile, onSave }) => {
       
       console.log('Audio blob loaded, starting playback with fade effects');
       
-      // Set initial volume based on fade in
-      if (fadeIn > 0) {
-        audio.volume = 0;
-        console.log('Starting with volume 0 for fade in');
-      } else {
-        audio.volume = volume / 100;
-        console.log('Starting with volume:', audio.volume);
-      }
+      // Set playback volume (fade effects are already in the audio)
+      audio.volume = playbackVolume / 100;
       
       // Start playback
+      console.log('Starting fade preview playback...');
       await audio.play();
-      console.log('Playback started successfully');
-      
-      // Apply fade in effect
-      if (fadeIn > 0) {
-        console.log('Applying fade in over', fadeIn, 'seconds');
-        const fadeInSteps = 20; // 20 steps for smooth fade
-        const fadeInInterval = (fadeIn * 1000) / fadeInSteps;
-        const volumeStep = (volume / 100) / fadeInSteps;
-        
-        let currentStep = 0;
-        const fadeInTimer = setInterval(() => {
-          currentStep++;
-          const newVolume = Math.min(volume / 100, currentStep * volumeStep);
-          audio.volume = newVolume;
-          
-          if (currentStep >= fadeInSteps) {
-            clearInterval(fadeInTimer);
-            audio.volume = volume / 100;
-            console.log('Fade in completed');
-          }
-        }, fadeInInterval);
-      }
-      
-      // Apply fade out effect
-      if (fadeOut > 0) {
-        const fadeOutStart = (trimEnd - trimStart - fadeOut) * 1000;
-        console.log('Fade out will start in', fadeOutStart, 'ms');
-        
-        setTimeout(() => {
-          console.log('Starting fade out over', fadeOut, 'seconds');
-          const fadeOutSteps = 20;
-          const fadeOutInterval = (fadeOut * 1000) / fadeOutSteps;
-          const volumeStep = (volume / 100) / fadeOutSteps;
-          
-          let currentStep = 0;
-          const fadeOutTimer = setInterval(() => {
-            currentStep++;
-            const newVolume = Math.max(0, (volume / 100) - (currentStep * volumeStep));
-            audio.volume = newVolume;
-            
-            if (currentStep >= fadeOutSteps) {
-              clearInterval(fadeOutTimer);
-              audio.volume = 0;
-              console.log('Fade out completed');
-            }
-          }, fadeOutInterval);
-        }, fadeOutStart);
-      }
+      console.log('Fade preview playback started successfully');
       
       // Set up event handlers
       audio.onended = () => {
@@ -644,21 +737,22 @@ const AudioEditor = ({ open, onClose, audioFile, onSave }) => {
         trimEnd,
         fadeIn,
         fadeOut,
-        volume,
+        gain,
         editedName,
-        `Edited version of ${audioFile.name} (trimmed ${formatTime(trimStart)}-${formatTime(trimEnd)})`,
+        `Edited version of ${audioFile.name} (trimmed ${formatTime(trimStart)}-${formatTime(trimEnd)}, gain ${gain}%)`,
         audioFile.tags || '',
         audioFile.type || 'bell'
       );
       
       console.log('Save result:', result);
-      setError(`✅ Audio processed and saved successfully! New file: ${result.sound.name}`);
+      setSuccess(`Audio processed and saved successfully! New file: ${result.sound.name}`);
+      setError('');
       setIsLoading(false);
       
       // Close the editor after successful save
       setTimeout(() => {
         onSave && onSave();
-      }, 2000);
+      }, 3000);
       
     } catch (err) {
       console.error('Save error:', err);
@@ -851,28 +945,79 @@ const AudioEditor = ({ open, onClose, audioFile, onSave }) => {
               />
             </Box>
             
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="body2" gutterBottom>
-                Volume: {volume}%
+            <Box sx={{ mb: 3, p: 2, bgcolor: 'primary.50', borderRadius: 1, border: '2px solid', borderColor: 'primary.main' }}>
+              <Typography variant="subtitle1" gutterBottom fontWeight="bold" color="primary">
+                🎚️ Gain/Amplification: {gain}%
+              </Typography>
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+                Permanently increases audio volume. Use this to boost quiet clips. 100% = original, 200% = 2x louder
               </Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <VolumeDown />
                 <Slider
-                  value={volume}
-                  onChange={(e, value) => setVolume(value)}
-                  min={0}
+                  value={gain}
+                  onChange={(e, value) => setGain(value)}
+                  min={50}
                   max={200}
+                  step={5}
+                  marks={[
+                    { value: 50, label: '50%' },
+                    { value: 100, label: '100%' },
+                    { value: 150, label: '150%' },
+                    { value: 200, label: '200%' }
+                  ]}
                   valueLabelDisplay="auto"
+                  sx={{ mx: 2 }}
                 />
                 <VolumeUp />
+              </Box>
+              <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                <Button size="small" variant="outlined" onClick={() => setGain(100)}>Reset</Button>
+                <Button size="small" variant="outlined" onClick={() => setGain(150)}>+50%</Button>
+                <Button size="small" variant="outlined" onClick={() => setGain(200)}>Max</Button>
+              </Box>
+            </Box>
+            
+            <Box sx={{ mb: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+              <Typography variant="subtitle2" gutterBottom>
+                🔊 Playback Volume: {playbackVolume}%
+              </Typography>
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+                Temporary preview volume (doesn't affect saved audio)
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <VolumeDown fontSize="small" />
+                <Slider
+                  value={playbackVolume}
+                  onChange={(e, value) => {
+                    setPlaybackVolume(value);
+                    if (audioRef.current) {
+                      audioRef.current.volume = value / 100;
+                    }
+                  }}
+                  min={0}
+                  max={100}
+                  valueLabelDisplay="auto"
+                  size="small"
+                />
+                <VolumeUp fontSize="small" />
               </Box>
             </Box>
           </Grid>
 
+          {/* Success Display */}
+          {success && (
+            <Grid item xs={12}>
+              <Alert severity="success" onClose={() => setSuccess('')}>
+                {success}
+              </Alert>
+            </Grid>
+          )}
+          
           {/* Error Display */}
           {error && (
             <Grid item xs={12}>
-              <Alert severity={error.includes('✅') ? 'success' : 'warning'} onClose={() => setError('')}>
+              <Alert severity="error" onClose={() => setError('')}>
                 {error}
               </Alert>
             </Grid>

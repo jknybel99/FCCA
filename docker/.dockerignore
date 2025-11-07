@@ -1,0 +1,76 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Docker
+docker/
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+backend/venv/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+frontend/node_modules/
+frontend/build/
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Database (will be mounted as volume)
+*.db
+*.db-journal
+
+# Logs
+*.log
+
+# Backups (will be mounted as volume)
+backups/
+
+# Static files (will be mounted as volume)
+static/sounds/
+static/uploads/
+static/recordings/
+
+# TTS voices (will be mounted as volume)
+piper/
+
+# Documentation
+README.md
+docs/
+*.md
+
+# Test files
+tests/
+test_*.py
+*_test.py
+
+# Coverage
+.coverage
+htmlcov/

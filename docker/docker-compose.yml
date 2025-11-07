@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  school-bell-system:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: school-bell-system
+    restart: unless-stopped
+    
+    ports:
+      - "8000:8000"
+    
+    volumes:
+      # Database persistence
+      - ../school_bell.db:/app/school_bell.db
+      
+      # Audio files persistence
+      - ../static/sounds:/app/static/sounds
+      - ../static/uploads:/app/static/uploads
+      - ../static/recordings:/app/static/recordings
+      
+      # Backups persistence
+      - ../backups:/app/backups
+      
+      # TTS voices (if using Piper)
+      - ../piper:/app/piper
+    
+    devices:
+      # Audio device passthrough for PulseAudio/ALSA
+      - /dev/snd:/dev/snd
+    
+    environment:
+      # Application settings
+      - TZ=America/Chicago
+      - PYTHONUNBUFFERED=1
+      
+      # PulseAudio settings (if needed)
+      - PULSE_SERVER=unix:/run/user/1000/pulse/native
+      
+      # Optional: Database path
+      - DATABASE_URL=sqlite:///./school_bell.db
+    
+    # Optional: Use host network for easier audio access
+    # network_mode: host
+    
+    # Optional: Run with host user for audio permissions
+    # user: "${UID}:${GID}"
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+# Optional: Named volumes for better management
+# volumes:
+#   bell_database:
+#   bell_audio:
+#   bell_backups:

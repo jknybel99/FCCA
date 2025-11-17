@@ -7,7 +7,7 @@ import {
 } from '@mui/material';
 import {
   PlayArrow, Stop, SwapHoriz, CalendarMonth, ViewDay, ViewWeek,
-  DragIndicator, Edit, Delete, Add, AddCircle, MusicNote
+  DragIndicator, Edit, Delete, Add, AddCircle, MusicNote, ContentCopy
 } from '@mui/icons-material';
 import { TimePicker } from '@mui/x-date-pickers/TimePicker';
 import dayjs from 'dayjs';
@@ -60,6 +60,14 @@ export default function VisualScheduleManager() {
   const [newEventDescription, setNewEventDescription] = useState('');
   const [selectedDays, setSelectedDays] = useState([0]); // For multi-day selection
   const [selectedSpecialSchedules, setSelectedSpecialSchedules] = useState([]); // For multi-schedule selection
+
+  // Copy special schedule states
+  const [copySpecialScheduleDialogOpen, setCopySpecialScheduleDialogOpen] = useState(false);
+  const [scheduleToCopy, setScheduleToCopy] = useState(null);
+  const [copyScheduleForm, setCopyScheduleForm] = useState({
+    name: '',
+    description: ''
+  });
 
   useEffect(() => { loadData(); }, []);
 
@@ -395,6 +403,38 @@ export default function VisualScheduleManager() {
     }
   };
 
+  const handleOpenCopySpecialScheduleDialog = (schedule) => {
+    setScheduleToCopy(schedule);
+    setCopyScheduleForm({
+      name: `${schedule.name} (Copy)`,
+      description: schedule.description || ''
+    });
+    setCopySpecialScheduleDialogOpen(true);
+  };
+
+  const handleCopySpecialSchedule = async () => {
+    if (!scheduleToCopy || !copyScheduleForm.name.trim()) {
+      showSnackbar('Please enter a name for the copied schedule', 'error');
+      return;
+    }
+
+    try {
+      await api.copySpecialSchedule(
+        scheduleToCopy.id,
+        copyScheduleForm.name,
+        copyScheduleForm.description
+      );
+      setCopySpecialScheduleDialogOpen(false);
+      setScheduleToCopy(null);
+      setCopyScheduleForm({ name: '', description: '' });
+      loadData();
+      showSnackbar('Special schedule copied successfully');
+    } catch (error) {
+      console.error('Error copying special schedule:', error);
+      showSnackbar('Error copying special schedule', 'error');
+    }
+  };
+
   const renderTimeGrid = () => {
     const defaultSchedule = schedules.find(s => s.is_default);
     if (!defaultSchedule) return null;
@@ -667,18 +707,28 @@ export default function VisualScheduleManager() {
                           })}
                         </Box>
                       </Box>
-                      <Button
-                        variant="outlined"
-                        sx={{ color: '#00897b', borderColor: '#00897b', '&:hover': { borderColor: '#00695c', bgcolor: 'rgba(0, 137, 123, 0.04)' } }}
-                        startIcon={<SwapHoriz />}
-                        onClick={() => {
-                          setSelectedScheduleForReplace(special);
-                          setIsSpecialScheduleReplace(true);
-                          setMassReplaceDialogOpen(true);
-                        }}
-                      >
-                        Mass Replace
-                      </Button>
+                      <Box display="flex" gap={1}>
+                        <Button
+                          variant="outlined"
+                          sx={{ color: '#1976d2', borderColor: '#1976d2', '&:hover': { borderColor: '#1565c0', bgcolor: 'rgba(25, 118, 210, 0.04)' } }}
+                          startIcon={<ContentCopy />}
+                          onClick={() => handleOpenCopySpecialScheduleDialog(special)}
+                        >
+                          Copy
+                        </Button>
+                        <Button
+                          variant="outlined"
+                          sx={{ color: '#00897b', borderColor: '#00897b', '&:hover': { borderColor: '#00695c', bgcolor: 'rgba(0, 137, 123, 0.04)' } }}
+                          startIcon={<SwapHoriz />}
+                          onClick={() => {
+                            setSelectedScheduleForReplace(special);
+                            setIsSpecialScheduleReplace(true);
+                            setMassReplaceDialogOpen(true);
+                          }}
+                        >
+                          Mass Replace
+                        </Button>
+                      </Box>
                     </Box>
 
                     <Box sx={{ border: '1px solid #e0e0e0', borderRadius: 2, overflow: 'hidden', mt: 2, boxShadow: 2 }}>
@@ -990,6 +1040,53 @@ export default function VisualScheduleManager() {
         <DialogActions>
           <Button onClick={() => setMassReplaceDialogOpen(false)}>Cancel</Button>
           <Button onClick={handleMassReplace} variant="contained" disabled={!oldSoundId || !newSoundId}>Replace</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Copy Special Schedule Dialog */}
+      <Dialog open={copySpecialScheduleDialogOpen} onClose={() => setCopySpecialScheduleDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          <Box display="flex" alignItems="center" gap={1}>
+            <ContentCopy />
+            <Typography variant="h6">Copy Special Schedule</Typography>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              Create a copy of "{scheduleToCopy?.name}" with all its events. You can rename and modify the copy after creation.
+            </Typography>
+            <TextField
+              fullWidth
+              label="New Schedule Name"
+              value={copyScheduleForm.name}
+              onChange={(e) => setCopyScheduleForm({ ...copyScheduleForm, name: e.target.value })}
+              margin="normal"
+              required
+              helperText="Enter a unique name for the copied schedule"
+            />
+            <TextField
+              fullWidth
+              label="Description"
+              value={copyScheduleForm.description}
+              onChange={(e) => setCopyScheduleForm({ ...copyScheduleForm, description: e.target.value })}
+              margin="normal"
+              multiline
+              rows={3}
+              helperText="Optional description for the copied schedule"
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCopySpecialScheduleDialogOpen(false)}>Cancel</Button>
+          <Button 
+            onClick={handleCopySpecialSchedule} 
+            variant="contained"
+            startIcon={<ContentCopy />}
+            disabled={!copyScheduleForm.name.trim()}
+          >
+            Copy Schedule
+          </Button>
         </DialogActions>
       </Dialog>
 

@@ -419,6 +419,79 @@ def download_backup(backup_filename: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error downloading backup: {str(e)}")
 
+@router.post("/backup/upload")
+async def upload_backup(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """Upload a backup file"""
+    try:
+        from backup_system import BackupSystem
+        import os
+        import shutil
+        
+        # Validate file type
+        if not file.filename.endswith('.zip'):
+            raise HTTPException(status_code=400, detail="Only .zip files are allowed")
+        
+        backup_system = BackupSystem()
+        
+        # Save uploaded file to backups directory
+        backup_path = os.path.join(backup_system.backup_dir, file.filename)
+        
+        with open(backup_path, 'wb') as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        print(f"✅ Backup uploaded: {file.filename}")
+        
+        return {
+            "message": "Backup uploaded successfully",
+            "filename": file.filename,
+            "path": backup_path
+        }
+    except Exception as e:
+        print(f"❌ Upload failed: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error uploading backup: {str(e)}")
+
+@router.post("/backup/upload-and-restore")
+async def upload_and_restore_backup(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """Upload and immediately restore a backup file"""
+    try:
+        from backup_system import BackupSystem
+        import os
+        import shutil
+        
+        # Validate file type
+        if not file.filename.endswith('.zip'):
+            raise HTTPException(status_code=400, detail="Only .zip files are allowed")
+        
+        backup_system = BackupSystem()
+        
+        # Save uploaded file to backups directory
+        backup_path = os.path.join(backup_system.backup_dir, file.filename)
+        
+        with open(backup_path, 'wb') as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        print(f"✅ Backup uploaded: {file.filename}")
+        print(f"🔄 Starting restore from: {file.filename}")
+        
+        # Restore the backup
+        result = backup_system.restore_backup(file.filename)
+        
+        print(f"✅ RESTORE COMPLETED: {result}")
+        
+        return {
+            "message": "Backup uploaded and restored successfully",
+            "filename": file.filename,
+            "result": result,
+            "note": "Please restart the backend server for changes to take effect"
+        }
+    except Exception as e:
+        print(f"❌ Upload and restore failed: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error uploading and restoring backup: {str(e)}")
+
 @router.delete("/backup/{backup_filename:path}")
 def delete_backup(backup_filename: str, db: Session = Depends(get_db)):
     """Delete a backup file"""

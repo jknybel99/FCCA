@@ -445,6 +445,68 @@ def delete_special_bell_event(db: Session, event_id: int):
     db.commit()
     return bell_event
 
+def copy_special_schedule(db: Session, special_schedule_id: int, new_name: str, new_description: str = None):
+    """Copy a special schedule with all its events"""
+    # Get the original special schedule
+    original_schedule = get_special_schedule(db, special_schedule_id)
+    if not original_schedule:
+        return None
+    
+    # Create a new special schedule with the new name
+    new_schedule = models.SpecialSchedule(
+        name=new_name,
+        description=new_description if new_description is not None else original_schedule.description,
+        schedule_id=original_schedule.schedule_id,
+        is_active=True
+    )
+    db.add(new_schedule)
+    db.commit()
+    db.refresh(new_schedule)
+    
+    # Get all special schedule days from the original schedule
+    original_days = db.query(models.SpecialScheduleDay).filter(
+        models.SpecialScheduleDay.special_schedule_id == special_schedule_id
+    ).all()
+    
+    # If no days exist, we still need to check for events and create a default day
+    if not original_days:
+        # Check if there are any events (shouldn't happen, but be safe)
+        return new_schedule
+    
+    day_mapping = {}  # Map old day IDs to new day IDs
+    for original_day in original_days:
+        new_day = models.SpecialScheduleDay(
+            special_schedule_id=new_schedule.id,
+            day_of_week=original_day.day_of_week,
+            is_active=original_day.is_active
+        )
+        db.add(new_day)
+        db.commit()
+        db.refresh(new_day)
+        day_mapping[original_day.id] = new_day.id
+    
+    # Copy all special bell events
+    for old_day_id, new_day_id in day_mapping.items():
+        original_events = db.query(models.SpecialBellEvent).filter(
+            models.SpecialBellEvent.special_schedule_day_id == old_day_id
+        ).all()
+        
+        for original_event in original_events:
+            new_event = models.SpecialBellEvent(
+                special_schedule_day_id=new_day_id,
+                time=original_event.time,
+                sound_id=original_event.sound_id,
+                tts_text=original_event.tts_text,
+                description=original_event.description,
+                repeat_tag=original_event.repeat_tag,
+                is_active=original_event.is_active
+            )
+            db.add(new_event)
+    
+    db.commit()
+    db.refresh(new_schedule)
+    return new_schedule
+
 # System operations
 def get_system_setting(db: Session, key: str):
     setting = db.query(models.SystemSettings).filter(models.SystemSettings.key == key).first()

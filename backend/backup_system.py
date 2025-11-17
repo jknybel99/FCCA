@@ -310,22 +310,32 @@ class BackupSystem:
                     logger.error(f"Database directory does not exist: {db_dir}")
             
             # Restore audio files if they exist
-            audio_backup_dir = os.path.join(restore_dir, 'audio_files')
+            audio_backup_dir = os.path.join(actual_backup_dir, 'audio_files')
+            logger.info(f"Looking for audio files at: {audio_backup_dir}")
+            
             if os.path.exists(audio_backup_dir):
                 audio_dir = 'static/sounds'
-                if os.path.exists(audio_dir):
-                    # Backup current audio files
+                
+                # Create audio directory if it doesn't exist
+                os.makedirs(audio_dir, exist_ok=True)
+                
+                if os.path.exists(audio_dir) and os.listdir(audio_dir):
+                    # Backup current audio files only if directory has files
                     backup_audio_dir = f"{audio_dir}_before_restore_{self.timestamp}"
                     shutil.copytree(audio_dir, backup_audio_dir)
                     logger.info(f"Current audio files backed up to {backup_audio_dir}")
                 
                 # Restore audio files
+                restored_count = 0
                 for item in os.listdir(audio_backup_dir):
                     src = os.path.join(audio_backup_dir, item)
                     dst = os.path.join(audio_dir, item)
-                    if os.path.isfile(src):
+                    if os.path.isfile(src) and not item.endswith('.json'):
                         shutil.copy2(src, dst)
-                logger.info(f"Audio files restored from {audio_backup_dir}")
+                        restored_count += 1
+                logger.info(f"✅ Audio files restored from {audio_backup_dir}: {restored_count} files")
+            else:
+                logger.warning(f"❌ Audio files directory not found at {audio_backup_dir}")
             
             # Clean up restore directory
             shutil.rmtree(restore_dir)

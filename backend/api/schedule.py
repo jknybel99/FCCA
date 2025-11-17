@@ -280,6 +280,37 @@ def delete_special_schedule(special_id: int, db: Session = Depends(get_db)):
     bell_scheduler.refresh_schedule()
     return {"message": "Special schedule deleted"}
 
+@router.post("/special/{special_id}/copy", response_model=schemas.SpecialSchedule)
+def copy_special_schedule(
+    special_id: int,
+    copy_data: dict,
+    db: Session = Depends(get_db)
+):
+    """Copy a special schedule with all its events"""
+    try:
+        new_name = copy_data.get("name")
+        new_description = copy_data.get("description")
+        
+        if not new_name:
+            raise HTTPException(status_code=400, detail="New schedule name is required")
+        
+        print(f"Copying special schedule {special_id} with name: {new_name}")
+        copied_schedule = crud.copy_special_schedule(db, special_id, new_name, new_description)
+        
+        if not copied_schedule:
+            raise HTTPException(status_code=404, detail="Special schedule not found")
+        
+        print(f"Successfully copied schedule. New ID: {copied_schedule.id}")
+        bell_scheduler.refresh_schedule()
+        return copied_schedule
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error copying special schedule: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error copying schedule: {str(e)}")
+
 @router.post("/special/activate-day")
 def activate_special_schedule_for_day(
     activation_data: dict,

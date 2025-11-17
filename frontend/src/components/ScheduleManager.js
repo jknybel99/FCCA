@@ -135,6 +135,14 @@ export default function ScheduleManager() {
   const [selectedDayOfWeek, setSelectedDayOfWeek] = useState(null);
   const [specialScheduleSelectorOpen, setSpecialScheduleSelectorOpen] = useState(false);
   
+  // Copy special schedule states
+  const [copySpecialScheduleDialogOpen, setCopySpecialScheduleDialogOpen] = useState(false);
+  const [scheduleToCopy, setScheduleToCopy] = useState(null);
+  const [copyScheduleForm, setCopyScheduleForm] = useState({
+    name: '',
+    description: ''
+  });
+  
   // Feedback states
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
@@ -708,6 +716,38 @@ export default function ScheduleManager() {
     } catch (error) {
       console.error('Error deleting special schedule:', error);
       showSnackbar('Error deleting special schedule', 'error');
+    }
+  };
+
+  const handleOpenCopySpecialScheduleDialog = (schedule) => {
+    setScheduleToCopy(schedule);
+    setCopyScheduleForm({
+      name: `${schedule.name} (Copy)`,
+      description: schedule.description || ''
+    });
+    setCopySpecialScheduleDialogOpen(true);
+  };
+
+  const handleCopySpecialSchedule = async () => {
+    if (!scheduleToCopy || !copyScheduleForm.name.trim()) {
+      showSnackbar('Please enter a name for the copied schedule', 'error');
+      return;
+    }
+
+    try {
+      await api.copySpecialSchedule(
+        scheduleToCopy.id,
+        copyScheduleForm.name,
+        copyScheduleForm.description
+      );
+      setCopySpecialScheduleDialogOpen(false);
+      setScheduleToCopy(null);
+      setCopyScheduleForm({ name: '', description: '' });
+      loadData();
+      showSnackbar('Special schedule copied successfully');
+    } catch (error) {
+      console.error('Error copying special schedule:', error);
+      showSnackbar('Error copying special schedule', 'error');
     }
   };
 
@@ -1388,25 +1428,44 @@ export default function ScheduleManager() {
                       </Typography>
                     )}
                       </Box>
-                      <IconButton
-                        size="small"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (window.confirm(`Are you sure you want to delete the special schedule "${special.name}"?`)) {
-                            handleDeleteSpecialSchedule(special.id);
-                          }
-                        }}
-                        sx={{ 
-                          mr: 1,
-                          color: '#999',
-                          '&:hover': {
-                            backgroundColor: '#ffebee',
-                            color: '#d32f2f'
-                          }
-                        }}
-                      >
-                        <DeleteIcon />
-                      </IconButton>
+                      <Box display="flex" gap={0.5}>
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenCopySpecialScheduleDialog(special);
+                          }}
+                          title="Copy this schedule"
+                          sx={{ 
+                            color: '#1976d2',
+                            '&:hover': {
+                              backgroundColor: '#e3f2fd',
+                              color: '#1565c0'
+                            }
+                          }}
+                        >
+                          <ContentCopyIcon />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (window.confirm(`Are you sure you want to delete the special schedule "${special.name}"?`)) {
+                              handleDeleteSpecialSchedule(special.id);
+                            }
+                          }}
+                          title="Delete this schedule"
+                          sx={{ 
+                            color: '#999',
+                            '&:hover': {
+                              backgroundColor: '#ffebee',
+                              color: '#d32f2f'
+                            }
+                          }}
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      </Box>
                     </Box>
                   </AccordionSummary>
                   <AccordionDetails sx={{ backgroundColor: '#fafafa', p: 2 }}>
@@ -2350,6 +2409,53 @@ export default function ScheduleManager() {
           <Button onClick={() => setScheduleEditDialogOpen(false)}>Cancel</Button>
           <Button onClick={handleScheduleEdit} variant="contained">
             Save Changes
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Copy Special Schedule Dialog */}
+      <Dialog open={copySpecialScheduleDialogOpen} onClose={() => setCopySpecialScheduleDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          <Box display="flex" alignItems="center" gap={1}>
+            <ContentCopyIcon />
+            <Typography variant="h6">Copy Special Schedule</Typography>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              Create a copy of "{scheduleToCopy?.name}" with all its events. You can rename and modify the copy after creation.
+            </Typography>
+            <TextField
+              fullWidth
+              label="New Schedule Name"
+              value={copyScheduleForm.name}
+              onChange={(e) => setCopyScheduleForm({ ...copyScheduleForm, name: e.target.value })}
+              margin="normal"
+              required
+              helperText="Enter a unique name for the copied schedule"
+            />
+            <TextField
+              fullWidth
+              label="Description"
+              value={copyScheduleForm.description}
+              onChange={(e) => setCopyScheduleForm({ ...copyScheduleForm, description: e.target.value })}
+              margin="normal"
+              multiline
+              rows={3}
+              helperText="Optional description for the copied schedule"
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCopySpecialScheduleDialogOpen(false)}>Cancel</Button>
+          <Button 
+            onClick={handleCopySpecialSchedule} 
+            variant="contained"
+            startIcon={<ContentCopyIcon />}
+            disabled={!copyScheduleForm.name.trim()}
+          >
+            Copy Schedule
           </Button>
         </DialogActions>
       </Dialog>

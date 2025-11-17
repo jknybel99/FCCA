@@ -223,6 +223,14 @@ export default {
     return res.data;
   },
 
+  copySpecialSchedule: async (specialScheduleId, newName, newDescription = null) => {
+    const res = await axiosInstance.post(`${API}/schedule/special/${specialScheduleId}/copy`, {
+      name: newName,
+      description: newDescription
+    });
+    return res.data;
+  },
+
   scheduleSpecialEvent: async (specialScheduleId, date) => {
     const res = await axiosInstance.post(`${API}/schedule/special/${specialScheduleId}/schedule`, {
       special_schedule_id: specialScheduleId,
@@ -559,6 +567,28 @@ export default {
       responseType: 'blob'
     });
     return res;
+  },
+
+  uploadBackup: async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await axiosInstance.post(`${BASE_URL}/api/admin/backup/upload`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+    return res.data;
+  },
+
+  uploadAndRestoreBackup: async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await axiosInstance.post(`${BASE_URL}/api/admin/backup/upload-and-restore`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+    return res.data;
   },
 
   // Remove clearCache as it's not functional

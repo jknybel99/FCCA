@@ -108,7 +108,25 @@ def get_today_events(db: Session = Depends(get_db)):
     today = date.today()
     return crud.get_events_for_date(db, today)
 
+@router.get("/mute-status")
+def get_mute_status(db: Session = Depends(get_db)):
+    """Get current mute status and mode"""
+    schedules_muted = crud.get_system_setting(db, "schedules_muted")
+    mute_mode = crud.get_system_setting(db, "mute_mode") or "all"
+    
+    return {
+        "muted": schedules_muted == "True",
+        "mode": mute_mode,
+        "is_muted": bell_scheduler.is_muted
+    }
 
+@router.get("/status")
+def get_scheduler_status():
+    return {
+        "scheduler_running": bell_scheduler.is_running,
+        "is_muted": bell_scheduler.is_muted,
+        "next_event": bell_scheduler.get_next_event()
+    }
 
 @router.get("/{schedule_id}", response_model=schemas.Schedule)
 def get_schedule(schedule_id: int, db: Session = Depends(get_db)):
@@ -353,22 +371,48 @@ def deactivate_special_schedule_for_day(
 
 @router.post("/mute-all")
 def mute_all_schedules(mute_data: dict, db: Session = Depends(get_db)):
+    """Mute all schedules (bells/music)
+    
+    Body: {"mute": true/false, "mode": "all" or "schedules_only"}
+    - "all": Mutes everything including playlists
+    - "schedules_only": Mutes only scheduled bells/music, allows playlists to play
+    """
     mute = mute_data.get("mute", False)
+    mode = mute_data.get("mode", "all")  # "all" or "schedules_only"
+    
+    # Save mute mode to system settings
+    crud.set_system_setting(db, "mute_mode", mode)
+    crud.set_system_setting(db, "schedules_muted", str(mute))
+    
+    # Apply mute to scheduler
     bell_scheduler.mute_all(mute)
-    return {"message": f"All schedules {'muted' if mute else 'unmuted'}"}
+    
+    # If muting, stop any currently playing scheduled audio
+    if mute:
+        import requests
+        try:
+            # Stop scheduled audio (but not playlist audio)
+            requests.post('http://localhost:8000/api/sounds/stop-scheduled-audio', timeout=1)
+        except:
+            pass
+        
+        if mode == "schedules_only":
+            message = "Schedules muted (playlists can still play)"
+        else:
+            message = "All audio muted"
+    else:
+        message = "Audio unmuted"
+    
+    return {
+        "message": message,
+        "muted": mute,
+        "mode": mode
+    }
 
 @router.post("/refresh")
 def refresh_schedule():
     bell_scheduler.refresh_schedule()
     return {"message": "Schedule refreshed"}
-
-@router.get("/status")
-def get_scheduler_status():
-    return {
-        "scheduler_running": bell_scheduler.is_running,
-        "active_jobs": len(bell_scheduler.current_jobs),
-        "current_time": datetime.now().isoformat()
-    }
 
 @router.post("/special/schedule-date")
 def schedule_special_schedule_for_date(

@@ -150,9 +150,53 @@ def save_admin_settings(settings: dict, db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error saving settings: {str(e)}")
 
+def generate_favicon_from_logo(logo_path: str, frontend_path: str = "/var/www/audio-frontend"):
+    """Generate favicon.ico from uploaded logo and deploy to frontend"""
+    try:
+        from PIL import Image
+        import subprocess
+        import tempfile
+        
+        # Open the logo image
+        img = Image.open(logo_path)
+        
+        # Convert to RGB if necessary (for PNG with transparency)
+        if img.mode in ('RGBA', 'LA', 'P'):
+            # Create a white background
+            background = Image.new('RGB', img.size, (255, 255, 255))
+            if img.mode == 'P':
+                img = img.convert('RGBA')
+            background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+            img = background
+        elif img.mode != 'RGB':
+            img = img.convert('RGB')
+        
+        # Resize to favicon sizes (16x16, 32x32, 48x48)
+        # We'll create a 32x32 favicon as it's the most common
+        favicon_size = (32, 32)
+        img_resized = img.resize(favicon_size, Image.Resampling.LANCZOS)
+        
+        # Save to temporary file first (to avoid permission issues)
+        with tempfile.NamedTemporaryFile(suffix='.ico', delete=False) as tmp_file:
+            tmp_favicon_path = tmp_file.name
+            img_resized.save(tmp_favicon_path, format='ICO', sizes=[favicon_size])
+        
+        # Move to frontend directory with sudo
+        favicon_path = os.path.join(frontend_path, "favicon.ico")
+        subprocess.run(['sudo', 'mv', tmp_favicon_path, favicon_path], check=True)
+        subprocess.run(['sudo', 'chmod', '644', favicon_path], check=True)
+        
+        print(f"✅ Favicon generated and saved to {favicon_path}")
+        return True
+    except Exception as e:
+        print(f"❌ Error generating favicon: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return False
+
 @router.post("/upload-logo")
 async def upload_logo(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    """Upload school logo"""
+    """Upload school logo and automatically generate favicon"""
     try:
         # Validate file type
         if not file.content_type.startswith('image/'):
@@ -175,7 +219,18 @@ async def upload_logo(file: UploadFile = File(...), db: Session = Depends(get_db
         logo_url = f"/static/uploads/{filename}"
         crud.set_system_setting(db, "school_logo", logo_url)
         
-        return {"logo_url": logo_url, "message": "Logo uploaded successfully"}
+        # Generate favicon from the uploaded logo
+        favicon_generated = generate_favicon_from_logo(file_path)
+        
+        response_message = "Logo uploaded successfully"
+        if favicon_generated:
+            response_message += " and favicon generated"
+        
+        return {
+            "logo_url": logo_url, 
+            "message": response_message,
+            "favicon_generated": favicon_generated
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error uploading logo: {str(e)}")
 

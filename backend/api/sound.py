@@ -311,7 +311,7 @@ playing_processes = {}
 
 @router.post("/{sound_id}/play")
 def play_sound(sound_id: int, db: Session = Depends(get_db)):
-    """Play a sound immediately (for testing)"""
+    """Play a sound immediately (for schedules/testing - does NOT stop playlist audio)"""
     sound = crud.get_sound(db, sound_id)
     if not sound:
         raise HTTPException(status_code=404, detail="Sound not found")
@@ -319,8 +319,14 @@ def play_sound(sound_id: int, db: Session = Depends(get_db)):
     if not os.path.exists(sound.file_path):
         raise HTTPException(status_code=404, detail="Sound file not found")
     
-    # Stop any currently playing audio
-    stop_all_audio()
+    # Don't call stop_all_audio() - let schedules and playlists coexist
+    # Only stop previous scheduled audio if any
+    for process in list(playing_processes.values()):
+        try:
+            process.terminate()
+        except:
+            pass
+    playing_processes.clear()
     
     # Get audio settings
     audio_settings = get_audio_settings_from_db(db)
@@ -594,9 +600,8 @@ def stop_sound(sound_id: int, db: Session = Depends(get_db)):
     return {"message": f"Stopped sound {sound_id}"}
 
 @router.post("/stop-all")
-def stop_all_audio():
+def stop_all():
     """Stop all currently playing audio"""
-    global playing_processes
     for process in playing_processes.values():
         try:
             process.terminate()
@@ -616,6 +621,85 @@ def stop_all_audio():
         pass
     
     return {"message": "Stopped all audio"}
+
+# Track playlist audio processes separately
+playlist_audio_process = None
+
+@router.post("/stop-playlist-audio")
+def stop_playlist_audio():
+    """Stop only playlist audio (not scheduled bells)"""
+    global playlist_audio_process
+    
+    if playlist_audio_process:
+        try:
+            playlist_audio_process.terminate()
+            playlist_audio_process.wait(timeout=1)
+        except:
+            try:
+                playlist_audio_process.kill()
+            except:
+                pass
+        playlist_audio_process = None
+    
+    return {"message": "Stopped playlist audio"}
+
+@router.post("/stop-scheduled-audio")
+def stop_scheduled_audio():
+    """Stop only scheduled audio (not playlist audio)"""
+    # Stop processes tracked in playing_processes (used by schedules)
+    for process in list(playing_processes.values()):
+        try:
+            process.terminate()
+        except:
+            pass
+    playing_processes.clear()
+    
+    return {"message": "Stopped scheduled audio"}
+
+@router.post("/{sound_id}/play-playlist")
+def play_sound_for_playlist(sound_id: int, db: Session = Depends(get_db)):
+    """Play a sound for playlist (tracks process separately from schedules)"""
+    global playlist_audio_process
+    
+    sound = crud.get_sound(db, sound_id)
+    if not sound:
+        raise HTTPException(status_code=404, detail="Sound not found")
+    
+    if not os.path.exists(sound.file_path):
+        raise HTTPException(status_code=404, detail="Sound file not found")
+    
+    # Stop any previous playlist audio
+    stop_playlist_audio()
+    
+    # Play the audio file and track the process
+    import subprocess
+    try:
+        # Try paplay first
+        try:
+            cmd = ['paplay', sound.file_path]
+            playlist_audio_process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print(f"Playing playlist audio with paplay: {sound.file_path}")
+            return {"message": f"Playing {sound.name}", "duration": sound.duration}
+        except FileNotFoundError:
+            pass
+        
+        # Fallback to aplay
+        try:
+            cmd = ['aplay', sound.file_path]
+            playlist_audio_process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print(f"Playing playlist audio with aplay: {sound.file_path}")
+            return {"message": f"Playing {sound.name}", "duration": sound.duration}
+        except FileNotFoundError:
+            pass
+        
+        # Final fallback to ffplay
+        cmd = ['ffplay', '-nodisp', '-autoexit', sound.file_path]
+        playlist_audio_process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print(f"Playing playlist audio with ffplay: {sound.file_path}")
+        return {"message": f"Playing {sound.name}", "duration": sound.duration}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error playing sound: {str(e)}")
 
 def play_audio_file_with_volume(file_path: str, volume: int = 100):
     """Play audio file with specified volume"""

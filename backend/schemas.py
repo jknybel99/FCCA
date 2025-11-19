@@ -279,3 +279,45 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     username: Optional[str] = None
+
+# Playlist schemas
+class PlaylistItemBase(BaseModel):
+    position: int
+    sound_id: Optional[int] = None
+    stream_url: Optional[str] = None
+    stream_name: Optional[str] = None
+
+class PlaylistItemCreate(PlaylistItemBase):
+    pass
+
+class PlaylistItem(PlaylistItemBase):
+    id: int
+    playlist_id: int
+    created_at: Optional[datetime] = None
+    sound: Optional[Sound] = None
+    
+    class Config:
+        from_attributes = True
+
+class PlaylistBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+    is_active: bool = True
+
+class PlaylistCreate(PlaylistBase):
+    pass
+
+class PlaylistUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+
+class Playlist(PlaylistBase):
+    id: int
+    created_by: Optional[int] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    items: List[PlaylistItem] = []
+    
+    class Config:
+        from_attributes = True

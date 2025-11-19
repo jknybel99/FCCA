@@ -31,7 +31,9 @@ import {
   Radio,
   FormControlLabel
 } from '@mui/material';
+import SystemStatsChart from './SystemStatsChart';
 import PushToTalkButton from './PushToTalkButton';
+import { usePlaylist } from '../contexts/PlaylistContext';
 import {
   PlayArrow,
   Pause,
@@ -71,6 +73,7 @@ const Dashboard = () => {
   const [nextEvent, setNextEvent] = useState(null);
   const [systemStatus, setSystemStatus] = useState(null);
   const [isMuted, setIsMuted] = useState(false);
+  const [muteMode, setMuteMode] = useState('all'); // 'all' or 'schedules_only'
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [volume, setVolume] = useState(100);
   const [audioSettings, setAudioSettings] = useState(null);
@@ -82,6 +85,21 @@ const Dashboard = () => {
   const [backupStatus, setBackupStatus] = useState(null);
   const [audioStats, setAudioStats] = useState(null);
   const [systemStats, setSystemStats] = useState(null);
+  
+  // Use global playlist context
+  const {
+    playlists,
+    selectedPlaylist,
+    playlistItems,
+    currentPlaylistIndex,
+    isPlaylistPlaying,
+    setSelectedPlaylist,
+    loadPlaylists,
+    startPlaylist,
+    stopPlaylist,
+    playNextItem,
+    playPreviousItem
+  } = usePlaylist();
   
   // Push-to-talk system state
   const [isPushToTalkActive, setIsPushToTalkActive] = useState(false);
@@ -272,6 +290,8 @@ const Dashboard = () => {
     fetchAudioStats();
     fetchSystemStats();
     loadAnnouncements();
+    loadMuteStatus();
+    loadPlaylists(); // Global context function
     // Load available input devices for server-side recording
     (async () => {
       try {
@@ -517,15 +537,42 @@ const Dashboard = () => {
 
   const handleMuteToggle = async () => {
     try {
-      await api.muteAllSchedules(!isMuted);
-      setIsMuted(!isMuted);
+      const newMutedState = !isMuted;
+      await api.setMuteMode(newMutedState, muteMode);
+      setIsMuted(newMutedState);
+      
+      // If muting all audio, stop playlist playback
+      if (newMutedState && muteMode === 'all') {
+        if (isPlaylistPlaying) {
+          await stopPlaylist();
+        }
+      }
+      
       fetchSystemStatus();
-      showSnackbar(`All schedules ${!isMuted ? 'muted' : 'unmuted'} successfully`, 'success');
+      const message = newMutedState 
+        ? (muteMode === 'schedules_only' ? 'Schedules muted (playlists can play)' : 'All audio muted')
+        : 'Audio unmuted';
+      showSnackbar(message, 'success');
     } catch (error) {
       console.error('Error toggling mute:', error);
       showSnackbar('Error toggling mute. Please try again.', 'error');
     }
   };
+
+  const loadMuteStatus = async () => {
+    try {
+      const status = await api.getMuteStatus();
+      setIsMuted(status.muted);
+      setMuteMode(status.mode || 'all');
+    } catch (error) {
+      console.error('Error loading mute status:', error);
+      // Set defaults if endpoint doesn't exist yet
+      setIsMuted(false);
+      setMuteMode('all');
+    }
+  };
+
+  // All playlist functions now handled by global context
 
   const showSnackbar = (message, severity = 'info') => {
     setSnackbar({ open: true, message, severity });
@@ -1248,33 +1295,111 @@ const Dashboard = () => {
           </Card>
         </Grid>
 
-        {/* Third Row - Active Schedule and Quick Controls */}
+        {/* Third Row - Active Schedule/Playlist and Quick Controls */}
         <Grid item xs={12} md={6}>
           <Card sx={{ height: '100%', boxShadow: 2, '&:hover': { boxShadow: 4 } }}>
             <CardContent sx={{ p: 2 }}>
-              <Typography variant="h6" gutterBottom>
-                Active Schedule
-              </Typography>
-              {activeSchedule ? (
-                <Box>
-                  <Typography variant="h6" color="primary">
-                    {activeSchedule.name}
+              <Grid container spacing={2}>
+                {/* Active Schedule - Left Half */}
+                <Grid item xs={6}>
+                  <Typography variant="subtitle1" gutterBottom fontWeight="bold">
+                    Active Schedule
                   </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {activeSchedule.description}
+                  {activeSchedule ? (
+                    <Box>
+                      <Typography variant="body1" color="primary">
+                        {activeSchedule.name}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {activeSchedule.description}
+                      </Typography>
+                      <Chip
+                        label={activeSchedule.is_active ? 'Active' : 'Inactive'}
+                        color={activeSchedule.is_active ? 'success' : 'default'}
+                        size="small"
+                        sx={{ mt: 1 }}
+                      />
+                    </Box>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      No active schedule
+                    </Typography>
+                  )}
+                </Grid>
+
+                {/* Playlist Player - Right Half */}
+                <Grid item xs={6}>
+                  <Typography variant="subtitle1" gutterBottom fontWeight="bold">
+                    Playlist Player
                   </Typography>
-                  <Chip
-                    label={activeSchedule.is_active ? 'Active' : 'Inactive'}
-                    color={activeSchedule.is_active ? 'success' : 'default'}
-                    size="small"
-                    sx={{ mt: 1 }}
-                  />
-                </Box>
-              ) : (
-                <Typography variant="body2" color="text.secondary">
-                  No active schedule
-                </Typography>
-              )}
+                  <Box display="flex" flexDirection="column" gap={1}>
+                    <FormControl fullWidth size="small">
+                      <Select
+                        value={selectedPlaylist?.id || ''}
+                        onChange={(e) => {
+                          const playlist = playlists.find(p => p.id === e.target.value);
+                          setSelectedPlaylist(playlist);
+                        }}
+                        displayEmpty
+                      >
+                        <MenuItem value="">Select Playlist</MenuItem>
+                        {playlists.map((playlist) => (
+                          <MenuItem key={playlist.id} value={playlist.id}>
+                            {playlist.name}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    
+                    {selectedPlaylist && playlistItems.length > 0 && (
+                      <Typography variant="caption" color="text.secondary" noWrap>
+                        {playlistItems[currentPlaylistIndex]?.sound?.name || playlistItems[currentPlaylistIndex]?.stream_name || 'N/A'}
+                      </Typography>
+                    )}
+                    
+                    <Box display="flex" gap={0.5}>
+                      <Button
+                        size="small"
+                        variant={isPlaylistPlaying ? "contained" : "outlined"}
+                        color="primary"
+                        startIcon={isPlaylistPlaying ? <Pause /> : <PlayArrow />}
+                        onClick={isPlaylistPlaying ? stopPlaylist : () => {
+                          // Check if muted with "all" mode
+                          if (isMuted && muteMode === 'all') {
+                            showSnackbar('Cannot play - all audio is muted', 'warning');
+                            return;
+                          }
+                          startPlaylist();
+                        }}
+                        disabled={!selectedPlaylist || playlistItems.length === 0}
+                        sx={{ fontSize: '0.75rem', px: 1 }}
+                      >
+                        {isPlaylistPlaying ? 'Stop' : 'Play'}
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        color="secondary"
+                        onClick={playPreviousItem}
+                        disabled={!isPlaylistPlaying || playlistItems.length === 0}
+                        sx={{ fontSize: '0.75rem', px: 0.5, minWidth: '40px' }}
+                      >
+                        Prev
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        color="secondary"
+                        onClick={playNextItem}
+                        disabled={!isPlaylistPlaying || playlistItems.length === 0}
+                        sx={{ fontSize: '0.75rem', px: 0.5, minWidth: '40px' }}
+                      >
+                        Next
+                      </Button>
+                    </Box>
+                  </Box>
+                </Grid>
+              </Grid>
             </CardContent>
           </Card>
         </Grid>
@@ -1285,16 +1410,33 @@ const Dashboard = () => {
               <Typography variant="h6" gutterBottom>
                 Quick Controls
               </Typography>
-              <Box display="flex" gap={1} flexWrap="wrap">
+              <Box display="flex" gap={1} flexWrap="wrap" alignItems="center">
+                {/* Mute Button */}
                 <Button
+                  size="small"
                   variant={isMuted ? "contained" : "outlined"}
                   color={isMuted ? "error" : "primary"}
                   startIcon={isMuted ? <VolumeOff /> : <VolumeUp />}
                   onClick={handleMuteToggle}
                 >
-                  {isMuted ? 'Unmute' : 'Mute All'}
+                  {isMuted ? 'Unmute' : 'Mute'}
                 </Button>
+                
+                {/* Mute Mode Selector */}
+                <FormControl size="small" sx={{ minWidth: 140 }}>
+                  <Select
+                    value={muteMode}
+                    onChange={(e) => setMuteMode(e.target.value)}
+                    disabled={isMuted}
+                  >
+                    <MenuItem value="all">All Audio</MenuItem>
+                    <MenuItem value="schedules_only">Schedules Only</MenuItem>
+                  </Select>
+                </FormControl>
+                
+                {/* Test Sound */}
                 <Button
+                  size="small"
                   variant="outlined"
                   color="secondary"
                   startIcon={isTestingSound ? <Pause /> : <PlayArrow />}
@@ -1303,7 +1445,10 @@ const Dashboard = () => {
                 >
                   {isTestingSound ? 'Testing...' : 'Test Sound'}
                 </Button>
+                
+                {/* Page System */}
                 <Button
+                  size="small"
                   variant="outlined"
                   color="primary"
                   startIcon={<Mic />}
@@ -1312,7 +1457,10 @@ const Dashboard = () => {
                 >
                   Page System
                 </Button>
+                
+                {/* Settings */}
                 <IconButton
+                  size="small"
                   onClick={() => setSettingsOpen(true)}
                   color="primary"
                 >
@@ -1322,7 +1470,6 @@ const Dashboard = () => {
             </CardContent>
           </Card>
         </Grid>
-
 
       </Grid>
 

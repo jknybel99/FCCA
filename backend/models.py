@@ -138,3 +138,35 @@ class User(Base):
     is_admin = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+# Playlist models
+class Playlist(Base):
+    __tablename__ = "playlists"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, index=True)
+    description = Column(Text, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    items = relationship("PlaylistItem", back_populates="playlist", cascade="all, delete-orphan", order_by="PlaylistItem.position")
+    creator = relationship("User")
+
+class PlaylistItem(Base):
+    __tablename__ = "playlist_items"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    playlist_id = Column(Integer, ForeignKey("playlists.id", ondelete="CASCADE"), nullable=False)
+    position = Column(Integer, nullable=False)  # Order in playlist
+    
+    # Either sound_id OR stream_url should be set, not both
+    sound_id = Column(Integer, ForeignKey("sounds.id", ondelete="CASCADE"), nullable=True)
+    stream_url = Column(String, nullable=True)  # For radio streams
+    stream_name = Column(String, nullable=True)  # Display name for stream
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    playlist = relationship("Playlist", back_populates="items")
+    sound = relationship("Sound")

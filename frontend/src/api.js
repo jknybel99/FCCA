@@ -19,7 +19,16 @@ const getBackendUrl = () => {
 
   // If we're running on localhost (same machine), use localhost backend default
   if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    // In development with proxy, use empty string for relative URLs
+    if (window.location.port === '3000') {
+      return "";  // Use proxy
+    }
     return "http://localhost:8000";
+  }
+
+  // If we're running on port 3000 (React dev server), use proxy regardless of hostname
+  if (window.location.port === '3000') {
+    return "";  // Use proxy
   }
 
   // Otherwise, use LAN hostname with port 8000 for direct backend access over HTTP
@@ -785,6 +794,97 @@ export default {
   },
   stopPushToTalk: async () => {
     const res = await axiosInstance.post(`${API}/paging/push-to-talk-stop`);
+    return res.data;
+  },
+
+  // Playlist API methods
+  getPlaylists: async () => {
+    const res = await axiosInstance.get(`${BASE_URL}/api/playlists/`);
+    return res.data;
+  },
+
+  getPlaylist: async (playlistId) => {
+    const res = await axiosInstance.get(`${BASE_URL}/api/playlists/${playlistId}`);
+    return res.data;
+  },
+
+  createPlaylist: async (name, description = null) => {
+    const res = await axiosInstance.post(`${BASE_URL}/api/playlists/`, {
+      name,
+      description,
+      is_active: true
+    });
+    return res.data;
+  },
+
+  updatePlaylist: async (playlistId, updates) => {
+    const res = await axiosInstance.put(`${BASE_URL}/api/playlists/${playlistId}`, updates);
+    return res.data;
+  },
+
+  deletePlaylist: async (playlistId) => {
+    const res = await axiosInstance.delete(`${BASE_URL}/api/playlists/${playlistId}`);
+    return res.data;
+  },
+
+  getPlaylistItems: async (playlistId) => {
+    const res = await axiosInstance.get(`${BASE_URL}/api/playlists/${playlistId}/items`);
+    return res.data;
+  },
+
+  addPlaylistItem: async (playlistId, position, soundId = null, streamUrl = null, streamName = null) => {
+    const res = await axiosInstance.post(`${BASE_URL}/api/playlists/${playlistId}/items`, {
+      position,
+      sound_id: soundId,
+      stream_url: streamUrl,
+      stream_name: streamName
+    });
+    return res.data;
+  },
+
+  deletePlaylistItem: async (playlistId, itemId) => {
+    const res = await axiosInstance.delete(`${BASE_URL}/api/playlists/${playlistId}/items/${itemId}`);
+    return res.data;
+  },
+
+  reorderPlaylistItems: async (playlistId, itemPositions) => {
+    const res = await axiosInstance.post(`${BASE_URL}/api/playlists/${playlistId}/reorder`, itemPositions);
+    return res.data;
+  },
+
+  // Stream controls
+  playStream: async (streamUrl) => {
+    const res = await axiosInstance.post(`${API}/stream/play`, { stream_url: streamUrl });
+    return res.data;
+  },
+
+  stopStream: async () => {
+    const res = await axiosInstance.post(`${API}/stream/stop`);
+    return res.data;
+  },
+
+  // Playlist audio controls
+  playSoundForPlaylist: async (soundId) => {
+    const res = await axiosInstance.post(`${API}/sounds/${soundId}/play-playlist`);
+    return res.data;
+  },
+
+  stopPlaylistAudio: async () => {
+    const res = await axiosInstance.post(`${API}/sounds/stop-playlist-audio`);
+    return res.data;
+  },
+
+  // Enhanced mute controls
+  getMuteStatus: async () => {
+    const res = await axiosInstance.get(`${API}/schedule/mute-status`);
+    return res.data;
+  },
+
+  setMuteMode: async (mute, mode = 'all') => {
+    const res = await axiosInstance.post(`${API}/schedule/mute-all`, {
+      mute,
+      mode  // 'all' or 'schedules_only'
+    });
     return res.data;
   }
 };

@@ -8,7 +8,7 @@ from datetime import datetime
 
 from api import schedule, sound, tts, admin, audio, paging
 from api import audio_editor
-from api import auth
+from api import auth, playlist, stream
 from services.scheduler import bell_scheduler
 from database import SessionLocal
 import crud, models, schemas
@@ -35,6 +35,8 @@ app.include_router(audio.router, prefix="/api/audio", tags=["Audio"])
 app.include_router(audio_editor.router, prefix="/api/audio-editor", tags=["Audio Editor"])
 app.include_router(paging.router, prefix="/api/paging", tags=["Paging"])
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
+app.include_router(playlist.router, prefix="/api/playlists", tags=["Playlists"])
+app.include_router(stream.router, prefix="/api/stream", tags=["Stream"])
 
 # Make sure this path matches where your files are actually saved!
 os.makedirs("./static/sounds", exist_ok=True)
@@ -153,6 +155,8 @@ async def get_system_status():
         "system_status": "running" if bell_scheduler.is_running else "stopped",
         "muted": bell_scheduler.is_muted if hasattr(bell_scheduler, 'is_muted') else False
     }
+
+# Favicon route temporarily removed to fix API routing
 
 # Catch-all route to serve React app for client-side routing
 # This must be LAST so it doesn't override API routes

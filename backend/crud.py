@@ -912,4 +912,102 @@ def delete_user(db: Session, user_id: int):
     if user:
         db.delete(user)
         db.commit()
-    return user
+
+# ==================== Playlist CRUD Operations ====================
+
+def create_playlist(db: Session, name: str, description: str = None, created_by: int = None):
+    """Create a new playlist"""
+    playlist = models.Playlist(
+        name=name,
+        description=description,
+        created_by=created_by,
+        is_active=True
+    )
+    db.add(playlist)
+    db.commit()
+    db.refresh(playlist)
+    return playlist
+
+def get_playlist(db: Session, playlist_id: int):
+    """Get a playlist by ID"""
+    return db.query(models.Playlist).filter(models.Playlist.id == playlist_id).first()
+
+def get_playlists(db: Session, skip: int = 0, limit: int = 100):
+    """Get all playlists"""
+    return db.query(models.Playlist).filter(models.Playlist.is_active == True).offset(skip).limit(limit).all()
+
+def update_playlist(db: Session, playlist_id: int, name: str = None, description: str = None, is_active: bool = None):
+    """Update a playlist"""
+    playlist = get_playlist(db, playlist_id)
+    if not playlist:
+        return None
+    
+    if name is not None:
+        playlist.name = name
+    if description is not None:
+        playlist.description = description
+    if is_active is not None:
+        playlist.is_active = is_active
+    
+    db.commit()
+    db.refresh(playlist)
+    return playlist
+
+def delete_playlist(db: Session, playlist_id: int):
+    """Delete a playlist"""
+    playlist = get_playlist(db, playlist_id)
+    if playlist:
+        db.delete(playlist)
+        db.commit()
+        return True
+    return False
+
+def add_playlist_item(db: Session, playlist_id: int, position: int, sound_id: int = None, stream_url: str = None, stream_name: str = None):
+    """Add an item to a playlist"""
+    # Validate that either sound_id or stream_url is provided, not both
+    if sound_id and stream_url:
+        raise ValueError("Cannot have both sound_id and stream_url")
+    if not sound_id and not stream_url:
+        raise ValueError("Must provide either sound_id or stream_url")
+    
+    item = models.PlaylistItem(
+        playlist_id=playlist_id,
+        position=position,
+        sound_id=sound_id,
+        stream_url=stream_url,
+        stream_name=stream_name
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
+def get_playlist_items(db: Session, playlist_id: int):
+    """Get all items in a playlist"""
+    return db.query(models.PlaylistItem).filter(
+        models.PlaylistItem.playlist_id == playlist_id
+    ).order_by(models.PlaylistItem.position).all()
+
+def delete_playlist_item(db: Session, item_id: int):
+    """Delete a playlist item"""
+    item = db.query(models.PlaylistItem).filter(models.PlaylistItem.id == item_id).first()
+    if item:
+        db.delete(item)
+        db.commit()
+        return True
+    return False
+
+def reorder_playlist_items(db: Session, playlist_id: int, item_positions: dict):
+    """Reorder playlist items
+    item_positions: dict of {item_id: new_position}
+    """
+    for item_id, new_position in item_positions.items():
+        item = db.query(models.PlaylistItem).filter(
+            models.PlaylistItem.id == item_id,
+            models.PlaylistItem.playlist_id == playlist_id
+        ).first()
+        if item:
+            item.position = new_position
+    
+    db.commit()
+    return True

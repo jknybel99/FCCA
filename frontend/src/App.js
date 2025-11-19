@@ -41,7 +41,10 @@ import ScheduleTable from "./components/ScheduleTable";
 import Login from "./components/Login";
 import ProtectedRoute from "./components/ProtectedRoute";
 import UserProfile from "./components/UserProfile";
+import PlaylistManager from "./components/PlaylistManager";
+import GlobalPlaybackControl from "./components/GlobalPlaybackControl";
 import { useAuth, AuthProvider } from "./contexts/AuthContext";
+import { PlaylistProvider } from "./contexts/PlaylistContext";
 import api, { getBackendBaseUrl, getBackendUrlOverride, setBackendUrlOverride, clearBackendUrlOverride } from "./api";
 
 import { ThemeProvider, createTheme } from "@mui/material/styles";
@@ -56,6 +59,7 @@ import LibraryMusicIcon from '@mui/icons-material/LibraryMusic';
 import RecordVoiceOverIcon from '@mui/icons-material/RecordVoiceOver';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import PersonIcon from '@mui/icons-material/Person';
+import PlaylistPlayIcon from '@mui/icons-material/PlaylistPlay';
 
 const theme = createTheme({
   palette: {
@@ -241,8 +245,9 @@ function AppContent() {
       items.splice(1, 0, { label: "Schedule Manager", icon: <ScheduleIcon />, index: 1 });
       items.push(
         { label: "Audio Library", icon: <LibraryMusicIcon />, index: 3 },
-        { label: "TTS Manager", icon: <RecordVoiceOverIcon />, index: 4 },
-        { label: "Admin Panel", icon: <AdminPanelSettingsIcon />, index: 5 }
+        { label: "Playlists", icon: <PlaylistPlayIcon />, index: 4 },
+        { label: "TTS Manager", icon: <RecordVoiceOverIcon />, index: 5 },
+        { label: "Admin Panel", icon: <AdminPanelSettingsIcon />, index: 6 }
       );
     } else {
       items.push({ label: "My Profile", icon: <PersonIcon />, index: 2 });
@@ -271,8 +276,10 @@ function AppContent() {
         case 3:
           return <AudioLibrary onPreview={handlePreview} />;
         case 4:
-          return <TTSManager />;
+          return <PlaylistManager />;
         case 5:
+          return <TTSManager />;
+        case 6:
           return <AdminPanel onSettingsUpdate={loadAdminSettings} />;
         default:
           return <Dashboard />;
@@ -401,6 +408,7 @@ function AppContent() {
                 <Tab label="Calendar" />
                 {!isAdmin() && <Tab label="My Profile" />}
                 {isAdmin() && <Tab label="Audio Library" />}
+                {isAdmin() && <Tab label="Playlists" />}
                 {isAdmin() && <Tab label="TTS Manager" />}
                 {isAdmin() && <Tab label="Admin Panel" />}
               </Tabs>
@@ -578,7 +586,10 @@ function AppContent() {
 function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <PlaylistProvider>
+        <AppContent />
+        <GlobalPlaybackControl />
+      </PlaylistProvider>
     </AuthProvider>
   );
 }

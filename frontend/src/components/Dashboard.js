@@ -278,6 +278,11 @@ const Dashboard = () => {
       }
     }, 200);
 
+    // Update system stats every 3 seconds for live chart
+    const statsInterval = setInterval(() => {
+      fetchSystemStats();
+    }, 3000);
+
     // Initial fetch
     fetchNextEvent();
     fetchSystemStatus();
@@ -322,6 +327,7 @@ const Dashboard = () => {
       clearInterval(timeInterval);
       clearInterval(eventInterval);
       clearInterval(pagingInterval);
+      clearInterval(statsInterval);
       // Cleanup mic monitor on unmount
       try {
         if (levelTimerRef.current) {
@@ -1023,40 +1029,72 @@ const Dashboard = () => {
         <Grid item xs={12} md={6}>
           <Card sx={{ height: '100%', boxShadow: 2, '&:hover': { boxShadow: 4 } }}>
             <CardContent sx={{ p: 2 }}>
-              <Typography variant="h6" gutterBottom>
-                Next Scheduled Audio
-              </Typography>
-              {nextEvent ? (
-                <Box>
-                  <Box display="flex" alignItems="center" mb={1}>
-                    {getEventIcon(nextEvent)}
-                    <Typography variant="h5" sx={{ ml: 1 }}>
-                      {dayjs(nextEvent.time, 'HH:mm:ss').format('hh:mm:ss A')}
-                    </Typography>
-                  </Box>
-                  <Typography variant="body1" color="text.secondary">
-                    {nextEvent.description || 'Bell Event'}
+              <Grid container spacing={2}>
+                {/* Next Scheduled Audio - Left Half */}
+                <Grid item xs={6}>
+                  <Typography variant="subtitle1" gutterBottom fontWeight="bold">
+                    Next Scheduled Audio
                   </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {nextEvent.sound_name || nextEvent.tts_text || 'No audio specified'}
-                  </Typography>
-                  {nextEvent.days_from_now > 0 && (
+                  {nextEvent ? (
+                    <Box>
+                      <Box display="flex" alignItems="center" mb={1}>
+                        {getEventIcon(nextEvent)}
+                        <Typography variant="h6" sx={{ ml: 1 }}>
+                          {dayjs(nextEvent.time, 'HH:mm:ss').format('hh:mm A')}
+                        </Typography>
+                      </Box>
+                      <Typography variant="body2" color="text.secondary">
+                        {nextEvent.description || 'Bell Event'}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" display="block">
+                        {nextEvent.sound_name || nextEvent.tts_text || 'No audio specified'}
+                      </Typography>
+                      {nextEvent.days_from_now > 0 && (
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          {nextEvent.days_from_now === 1 ? 'Tomorrow' : `In ${nextEvent.days_from_now} days`}
+                        </Typography>
+                      )}
+                      <Chip
+                        label={`In ${formatTimeUntil(nextEvent.minutes_until)}`}
+                        color="primary"
+                        size="small"
+                        sx={{ mt: 1 }}
+                      />
+                    </Box>
+                  ) : (
                     <Typography variant="body2" color="text.secondary">
-                      {nextEvent.days_from_now === 1 ? 'Tomorrow' : `In ${nextEvent.days_from_now} days`}
+                      No upcoming events
                     </Typography>
                   )}
-                  <Chip
-                    label={`In ${formatTimeUntil(nextEvent.minutes_until)}`}
-                    color="primary"
-                    size="small"
-                    sx={{ mt: 1 }}
-                  />
-                </Box>
-              ) : (
-                <Typography variant="body1" color="text.secondary">
-                  No upcoming events
-                </Typography>
-              )}
+                </Grid>
+                
+                {/* Volume Level - Right Half */}
+                <Grid item xs={6}>
+                  <Typography variant="subtitle1" gutterBottom fontWeight="bold">
+                    Volume Level
+                  </Typography>
+                  <Box display="flex" alignItems="center" gap={1} mb={2}>
+                    {volume === 0 ? <VolumeMute /> : 
+                     volume < 30 ? <VolumeDown /> : 
+                     volume < 70 ? <VolumeUp /> : <VolumeUp />}
+                    <Box sx={{ flexGrow: 1 }}>
+                      <LinearProgress 
+                        variant="determinate" 
+                        value={volume} 
+                        sx={{ height: 8, borderRadius: 4 }}
+                      />
+                    </Box>
+                    <Typography variant="body2" color="text.secondary" sx={{ minWidth: '35px' }}>
+                      {volume}%
+                    </Typography>
+                  </Box>
+                  {audioSettings && (
+                    <Typography variant="caption" color="text.secondary">
+                      Output: {getDeviceName(audioSettings.output)}
+                    </Typography>
+                  )}
+                </Grid>
+              </Grid>
             </CardContent>
           </Card>
         </Grid>
@@ -1195,101 +1233,10 @@ const Dashboard = () => {
           <Card sx={{ height: '100%', boxShadow: 2, '&:hover': { boxShadow: 4 } }}>
             <CardContent sx={{ p: 2 }}>
               <Typography variant="h6" gutterBottom>
-                Volume Level
+                System Performance
               </Typography>
-              <Box display="flex" alignItems="center" gap={2}>
-                {volume === 0 ? <VolumeMute /> : 
-                 volume < 30 ? <VolumeDown /> : 
-                 volume < 70 ? <VolumeUp /> : <VolumeUp />}
-                <Box sx={{ flexGrow: 1 }}>
-                  <LinearProgress 
-                    variant="determinate" 
-                    value={volume} 
-                    sx={{ height: 10, borderRadius: 5 }}
-                  />
-                </Box>
-                <Typography variant="body2" color="text.secondary">
-                  {volume}%
-                </Typography>
-              </Box>
-              {audioSettings && (
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                  Output: {getDeviceName(audioSettings.output)}
-                </Typography>
-              )}
-
-              {/* Compact System Stats */}
-              <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
-                  <MonitorHeart sx={{ fontSize: 14 }} />
-                  System Stats
-                </Typography>
-                <Grid container spacing={0.5}>
-                  <Grid item xs={3}>
-                    <Box sx={{ textAlign: 'center' }}>
-                      <Typography variant="caption" color="text.secondary" display="block">
-                        CPU
-                      </Typography>
-                      <Typography 
-                        variant="body2" 
-                        fontWeight="bold"
-                        sx={{ color: getPercentageColor(systemStats?.cpu_percent || 0) }}
-                      >
-                        {systemStats?.cpu_percent || 0}%
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary" fontSize="10px">
-                        {systemStats?.cpu_temp || 'N/A'}°C
-                      </Typography>
-                    </Box>
-                  </Grid>
-                  <Grid item xs={3}>
-                    <Box sx={{ textAlign: 'center' }}>
-                      <Typography variant="caption" color="text.secondary" display="block">
-                        RAM
-                      </Typography>
-                      <Typography 
-                        variant="body2" 
-                        fontWeight="bold"
-                        sx={{ color: getPercentageColor(systemStats?.memory_percent || 0) }}
-                      >
-                        {systemStats?.memory_percent || 0}%
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary" fontSize="10px">
-                        {systemStats?.memory_used_gb || 0} GB
-                      </Typography>
-                    </Box>
-                  </Grid>
-                  <Grid item xs={3}>
-                    <Box sx={{ textAlign: 'center' }}>
-                      <Typography variant="caption" color="text.secondary" display="block">
-                        Storage
-                      </Typography>
-                      <Typography 
-                        variant="body2" 
-                        fontWeight="bold"
-                        sx={{ color: getPercentageColor(systemStats?.disk_percent || 0) }}
-                      >
-                        {systemStats?.disk_percent || 0}%
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary" fontSize="10px">
-                        {systemStats?.disk_free_gb || 0} GB
-                      </Typography>
-                    </Box>
-                  </Grid>
-                  <Grid item xs={3}>
-                    <Box sx={{ textAlign: 'center' }}>
-                      <Typography variant="caption" color="text.secondary" display="block">
-                        Uptime
-                      </Typography>
-                      <Typography variant="body2" fontWeight="bold">
-                        {systemStats?.uptime_days || 0}d
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary" fontSize="10px">
-                        {systemStats?.uptime_hours || 0}h
-                      </Typography>
-                    </Box>
-                  </Grid>
-                </Grid>
+              <Box sx={{ height: '180px' }}>
+                <SystemStatsChart systemStats={systemStats} />
               </Box>
             </CardContent>
           </Card>

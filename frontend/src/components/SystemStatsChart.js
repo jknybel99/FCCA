@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, Typography, Box, Grid, LinearProgress } from '@mui/material';
-import { MonitorHeart, Memory, Storage, ThermostatAuto } from '@mui/icons-material';
-import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Filler } from 'chart.js';
+import { Typography, Box } from '@mui/material';
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Filler, Title, Legend } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler);
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Title, Legend);
 
 const SystemStatsChart = ({ systemStats }) => {
   const [cpuHistory, setCpuHistory] = useState([]);
@@ -33,53 +32,64 @@ const SystemStatsChart = ({ systemStats }) => {
   const opts = {
     responsive: true,
     maintainAspectRatio: false,
-    scales: { y: { beginAtZero: true, max: 100 }, x: { ticks: { maxRotation: 45, font: { size: 9 } } } }
+    plugins: {
+      legend: {
+        display: true,
+        position: 'top',
+        labels: { 
+          boxWidth: 15, 
+          font: { size: 11 }, 
+          padding: 8,
+          usePointStyle: true
+        }
+      }
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        max: 100,
+        ticks: { font: { size: 10 } },
+        grid: { display: true },
+        title: {
+          display: true,
+          text: 'Usage %',
+          font: { size: 10 }
+        }
+      },
+      x: {
+        display: false
+      }
+    }
   };
 
   return (
-    <Card sx={{ boxShadow: 3 }}>
-      <CardContent>
-        <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <MonitorHeart color="primary" /> System Performance
-        </Typography>
-        <Box sx={{ height: 180, mb: 2 }}><Line data={chartData} options={opts} /></Box>
-        <Grid container spacing={2}>
-          <Grid item xs={4}>
-            <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'background.default' }}>
-              <Typography variant="caption" color="text.secondary">CPU</Typography>
-              <Typography variant="h6" sx={{ color: getColor(systemStats?.cpu_percent || 0) }}>
-                {systemStats?.cpu_percent || 0}%
-              </Typography>
-              <LinearProgress variant="determinate" value={systemStats?.cpu_percent || 0} 
-                sx={{ mt: 1, height: 6, borderRadius: 3, '& .MuiLinearProgress-bar': { bgcolor: getColor(systemStats?.cpu_percent || 0) } }} />
-              <Typography variant="caption" color="text.secondary">{systemStats?.cpu_temp || 'N/A'}°C</Typography>
-            </Box>
-          </Grid>
-          <Grid item xs={4}>
-            <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'background.default' }}>
-              <Typography variant="caption" color="text.secondary">Memory</Typography>
-              <Typography variant="h6" sx={{ color: getColor(systemStats?.memory_percent || 0) }}>
-                {systemStats?.memory_percent || 0}%
-              </Typography>
-              <LinearProgress variant="determinate" value={systemStats?.memory_percent || 0} 
-                sx={{ mt: 1, height: 6, borderRadius: 3, '& .MuiLinearProgress-bar': { bgcolor: getColor(systemStats?.memory_percent || 0) } }} />
-              <Typography variant="caption" color="text.secondary">{systemStats?.memory_used_gb || 0} GB</Typography>
-            </Box>
-          </Grid>
-          <Grid item xs={4}>
-            <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'background.default' }}>
-              <Typography variant="caption" color="text.secondary">Storage</Typography>
-              <Typography variant="h6" sx={{ color: getColor(systemStats?.disk_percent || 0) }}>
-                {systemStats?.disk_percent || 0}%
-              </Typography>
-              <LinearProgress variant="determinate" value={systemStats?.disk_percent || 0} 
-                sx={{ mt: 1, height: 6, borderRadius: 3, '& .MuiLinearProgress-bar': { bgcolor: getColor(systemStats?.disk_percent || 0) } }} />
-              <Typography variant="caption" color="text.secondary">{systemStats?.disk_free_gb || 0} GB free</Typography>
-            </Box>
-          </Grid>
-        </Grid>
-      </CardContent>
-    </Card>
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ flexGrow: 1, minHeight: 0 }}>
+        <Line data={chartData} options={opts} />
+      </Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-around', mt: 0.5, gap: 0.5 }}>
+        <Box sx={{ textAlign: 'center', minWidth: 0 }}>
+          <Typography variant="caption" color="text.secondary" fontSize="11px" sx={{ lineHeight: 1.2 }}>
+            CPU: <strong style={{ color: getColor(systemStats?.cpu_percent || 0) }}>{systemStats?.cpu_percent || 0}%</strong> {systemStats?.cpu_temp || 'N/A'}°C
+          </Typography>
+        </Box>
+        <Box sx={{ textAlign: 'center', minWidth: 0 }}>
+          <Typography variant="caption" color="text.secondary" fontSize="11px" sx={{ lineHeight: 1.2 }}>
+            RAM: <strong style={{ color: getColor(systemStats?.memory_percent || 0) }}>{systemStats?.memory_percent || 0}%</strong> {systemStats?.memory_used_gb || 0}GB
+          </Typography>
+        </Box>
+        <Box sx={{ textAlign: 'center', minWidth: 0 }}>
+          <Typography variant="caption" color="text.secondary" fontSize="11px" sx={{ lineHeight: 1.2 }}>
+            Storage: <strong style={{ color: getColor(systemStats?.disk_percent || 0) }}>{systemStats?.disk_percent || 0}%</strong> {systemStats?.disk_free_gb || 0}GB
+          </Typography>
+        </Box>
+        <Box sx={{ textAlign: 'center', minWidth: 0 }}>
+          <Typography variant="caption" color="text.secondary" fontSize="11px" sx={{ lineHeight: 1.2 }}>
+            Uptime: <strong>{systemStats?.uptime_days || 0}d {systemStats?.uptime_hours || 0}h</strong>
+          </Typography>
+        </Box>
+      </Box>
+    </Box>
   );
 };
 

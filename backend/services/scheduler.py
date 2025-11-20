@@ -316,22 +316,27 @@ class BellScheduler:
                 audio_settings = self._get_audio_settings()
                 logger.info(f"Audio settings for scheduler: {audio_settings}")
                 
-                # Apply EQ if needed (same as audio library)
+                # Check if we need to preprocess audio (EQ or volume)
                 playback_file = sound.file_path
-                if audio_settings.get('eq'):
-                    eq_settings = audio_settings['eq']
-                    logger.info(f"EQ settings found: {eq_settings}")
-                    # Check if any EQ settings are non-zero
-                    eq_values = [float(v) for v in eq_settings.values()]
-                    logger.info(f"EQ values: {eq_values}")
-                    if any(v != 0 for v in eq_values):
-                        logger.info(f"Applying EQ settings: {eq_settings}")
-                        playback_file = self._apply_eq_to_audio(sound.file_path, eq_settings)
-                        logger.info(f"EQ processed file: {playback_file}")
-                    else:
-                        logger.info("No EQ settings to apply (all values are 0)")
+                needs_preprocessing = False
+                
+                # Check EQ settings
+                eq_settings = audio_settings.get('eq', {})
+                eq_values = [float(v) for v in eq_settings.values()] if eq_settings else []
+                has_eq = any(v != 0 for v in eq_values)
+                
+                # Check volume settings
+                volume = int(audio_settings.get('volume', '100'))
+                has_volume_change = volume != 100
+                
+                needs_preprocessing = has_eq or has_volume_change
+                
+                if needs_preprocessing:
+                    logger.info(f"Preprocessing audio - EQ: {has_eq}, Volume: {has_volume_change} ({volume}%)")
+                    playback_file = self._apply_audio_processing(sound.file_path, eq_settings if has_eq else None, volume)
+                    logger.info(f"Processed file: {playback_file}")
                 else:
-                    logger.info("No EQ settings found in audio_settings")
+                    logger.info("No audio preprocessing needed")
                 
                 # Use the same player logic as audio library
                 file_extension = os.path.splitext(playback_file)[1].lower()
@@ -420,43 +425,73 @@ class BellScheduler:
         except Exception as e:
             logger.error(f"Error playing sound: {e}")
     
-    def _apply_eq_to_audio(self, input_file, eq_settings):
-        """Apply EQ to audio file using ffmpeg (same as audio library)"""
+    def _apply_audio_processing(self, input_file, eq_settings=None, volume=100):
+        """Apply EQ and volume to audio file using ffmpeg"""
         try:
             import tempfile
             import subprocess
             
-            logger.info(f"Starting EQ processing for {input_file}")
-            logger.info(f"EQ settings: {eq_settings}")
+            logger.info(f"Starting audio processing for {input_file}")
+            logger.info(f"EQ settings: {eq_settings}, Volume: {volume}%")
             
             # Create temporary output file
             with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp_file:
                 output_file = tmp_file.name
             
-            # Build ffmpeg command with EQ filters
-            cmd = [
-                'ffmpeg', '-i', input_file, '-y',
-                '-af', f"equalizer=f=60:width_type=o:width=2:g={eq_settings.get('bass', 0)},"
-                       f"equalizer=f=8000:width_type=o:width=2:g={eq_settings.get('treble', 0)},"
-                       f"equalizer=f=100:width_type=o:width=2:g={eq_settings.get('low', 0)},"
-                       f"equalizer=f=1000:width_type=o:width=2:g={eq_settings.get('mid', 0)},"
-                       f"equalizer=f=8000:width_type=o:width=2:g={eq_settings.get('high', 0)}",
-                output_file
-            ]
+            # Build ffmpeg command with audio filters
+            ffmpeg_cmd = ['ffmpeg', '-i', input_file, '-y']
             
-            logger.info(f"Running ffmpeg command: {' '.join(cmd)}")
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            # Build filter chain
+            filter_parts = []
+            
+            # Add EQ filters if provided
+            if eq_settings:
+                if eq_settings.get('bass') and eq_settings['bass'] != '0':
+                    bass_gain = float(eq_settings['bass'])
+                    filter_parts.append(f"equalizer=f=60:width_type=o:width=2:g={bass_gain}")
+                
+                if eq_settings.get('treble') and eq_settings['treble'] != '0':
+                    treble_gain = float(eq_settings['treble'])
+                    filter_parts.append(f"equalizer=f=8000:width_type=o:width=2:g={treble_gain}")
+                
+                if eq_settings.get('low') and eq_settings['low'] != '0':
+                    low_gain = float(eq_settings['low'])
+                    filter_parts.append(f"equalizer=f=100:width_type=o:width=2:g={low_gain}")
+                
+                if eq_settings.get('mid') and eq_settings['mid'] != '0':
+                    mid_gain = float(eq_settings['mid'])
+                    filter_parts.append(f"equalizer=f=1000:width_type=o:width=2:g={mid_gain}")
+                
+                if eq_settings.get('high') and eq_settings['high'] != '0':
+                    high_gain = float(eq_settings['high'])
+                    filter_parts.append(f"equalizer=f=8000:width_type=o:width=2:g={high_gain}")
+            
+            # Add volume filter if not 100%
+            if volume != 100:
+                volume_multiplier = volume / 100.0
+                filter_parts.append(f"volume={volume_multiplier}")
+                logger.info(f"Adding volume filter: {volume_multiplier}x")
+            
+            if filter_parts:
+                # Combine all filters
+                filter_str = ','.join(filter_parts)
+                ffmpeg_cmd.extend(['-af', filter_str])
+            
+            ffmpeg_cmd.append(output_file)
+            
+            logger.info(f"Running ffmpeg command: {' '.join(ffmpeg_cmd)}")
+            result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=30)
             
             if result.returncode == 0:
-                logger.info("EQ processing successful")
+                logger.info("Audio processing successful")
                 return output_file
             else:
-                logger.error(f"EQ processing failed: {result.stderr}")
-                return input_file  # Return original file if EQ fails
+                logger.error(f"Audio processing failed: {result.stderr}")
+                return input_file  # Return original file if processing fails
                 
         except Exception as e:
-            logger.error(f"Error applying EQ: {e}")
-            return input_file  # Return original file if EQ fails
+            logger.error(f"Error applying audio processing: {e}")
+            return input_file  # Return original file if processing fails
     
     def _get_audio_settings(self):
         """Get audio settings from database"""

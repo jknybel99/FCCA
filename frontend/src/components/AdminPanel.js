@@ -69,6 +69,7 @@ export default function AdminPanel({ onSettingsUpdate }) {
   const [recentBackups, setRecentBackups] = useState([]);
   const [isCreatingBackup, setIsCreatingBackup] = useState(false);
   const [isLoadingBackups, setIsLoadingBackups] = useState(false);
+  const [backupDescriptionDialog, setBackupDescriptionDialog] = useState({ open: false, description: '', filename: null, isEdit: false });
 
   useEffect(() => {
     loadSettings();
@@ -140,10 +141,16 @@ export default function AdminPanel({ onSettingsUpdate }) {
     }
   };
 
-  const handleCreateBackup = async () => {
+  const handleCreateBackup = () => {
+    // Open dialog to get description
+    setBackupDescriptionDialog({ open: true, description: '', filename: null, isEdit: false });
+  };
+
+  const handleCreateBackupWithDescription = async () => {
     setIsCreatingBackup(true);
+    setBackupDescriptionDialog({ ...backupDescriptionDialog, open: false });
     try {
-      const response = await api.createBackup();
+      const response = await api.createBackup(backupDescriptionDialog.description || null);
       setSnackbar({ open: true, message: 'Backup created successfully!', severity: 'success' });
       await loadBackupStatus(); // Refresh backup list
     } catch (error) {
@@ -151,6 +158,27 @@ export default function AdminPanel({ onSettingsUpdate }) {
       setSnackbar({ open: true, message: 'Error creating backup', severity: 'error' });
     } finally {
       setIsCreatingBackup(false);
+    }
+  };
+
+  const handleEditBackupDescription = (backup) => {
+    setBackupDescriptionDialog({ 
+      open: true, 
+      description: backup.description || '', 
+      filename: backup.filename,
+      isEdit: true 
+    });
+  };
+
+  const handleSaveBackupDescription = async () => {
+    try {
+      await api.updateBackupDescription(backupDescriptionDialog.filename, backupDescriptionDialog.description);
+      setSnackbar({ open: true, message: 'Backup description updated!', severity: 'success' });
+      setBackupDescriptionDialog({ open: false, description: '', filename: null, isEdit: false });
+      await loadBackupStatus(); // Refresh backup list
+    } catch (error) {
+      console.error('Error updating backup description:', error);
+      setSnackbar({ open: true, message: 'Error updating description', severity: 'error' });
     }
   };
 
@@ -742,19 +770,31 @@ export default function AdminPanel({ onSettingsUpdate }) {
                         alignItems: 'center'
                       }}
                     >
-                      <Box>
+                      <Box sx={{ flex: 1 }}>
                         <Typography variant="body2" fontWeight="medium">
                           {backup.filename}
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
                           {new Date(backup.created).toLocaleString()} • {backup.size_mb} MB
                         </Typography>
+                        {backup.description && (
+                          <Typography variant="body2" color="text.primary" sx={{ mt: 0.5, fontStyle: 'italic' }}>
+                            "{backup.description}"
+                          </Typography>
+                        )}
                       </Box>
-                      <Box>
+                      <Box sx={{ display: 'flex', gap: 1 }}>
+                        <IconButton 
+                          size="small" 
+                          color="primary"
+                          onClick={() => handleEditBackupDescription(backup)}
+                          title="Edit Description"
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
                         <Button 
                           size="small" 
                           variant="outlined" 
-                          sx={{ mr: 1 }}
                           onClick={() => handleDownloadBackup(backup.filename)}
                         >
                           Download
@@ -762,7 +802,6 @@ export default function AdminPanel({ onSettingsUpdate }) {
                         <Button 
                           size="small" 
                           variant="outlined" 
-                          sx={{ mr: 1 }}
                           onClick={() => handleRestoreBackup(backup.filename)}
                         >
                           Restore
@@ -846,6 +885,44 @@ export default function AdminPanel({ onSettingsUpdate }) {
           <Button onClick={() => setLogoDialogOpen(false)}>Cancel</Button>
           <Button onClick={handleLogoSave} variant="contained" disabled={!logoFile}>
             Save Logo
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Backup Description Dialog */}
+      <Dialog 
+        open={backupDescriptionDialog.open} 
+        onClose={() => setBackupDescriptionDialog({ open: false, description: '', filename: null, isEdit: false })} 
+        maxWidth="sm" 
+        fullWidth
+      >
+        <DialogTitle>
+          {backupDescriptionDialog.isEdit ? 'Edit Backup Description' : 'Create Backup'}
+        </DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Description (Optional)"
+            type="text"
+            fullWidth
+            multiline
+            rows={3}
+            value={backupDescriptionDialog.description}
+            onChange={(e) => setBackupDescriptionDialog({ ...backupDescriptionDialog, description: e.target.value })}
+            placeholder="Enter a description for this backup..."
+            helperText="Add notes about what's included in this backup"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setBackupDescriptionDialog({ open: false, description: '', filename: null, isEdit: false })}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={backupDescriptionDialog.isEdit ? handleSaveBackupDescription : handleCreateBackupWithDescription} 
+            variant="contained"
+          >
+            {backupDescriptionDialog.isEdit ? 'Save' : 'Create Backup'}
           </Button>
         </DialogActions>
       </Dialog>

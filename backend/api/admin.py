@@ -392,22 +392,29 @@ def get_ntp_servers():
     }
 
 @router.post("/backup")
-def create_backup(db: Session = Depends(get_db)):
-    """Create a comprehensive system backup"""
+def create_backup(backup_data: dict = None, db: Session = Depends(get_db)):
+    """Create a comprehensive system backup with optional description"""
     try:
         from backup_system import BackupSystem
+        
+        # Extract description from request body if provided
+        description = None
+        if backup_data and 'description' in backup_data:
+            description = backup_data['description']
         
         backup_system = BackupSystem()
         backup_path = backup_system.create_backup(
             include_audio=True,
             include_database=True,
-            include_config=True
+            include_config=True,
+            description=description
         )
         
         return {
             "message": "Backup created successfully",
             "backup_path": backup_path,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "description": description
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error creating backup: {str(e)}")
@@ -428,6 +435,27 @@ def list_backups():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error listing backups: {str(e)}")
+
+@router.put("/backup/{backup_filename:path}/description")
+def update_backup_description(backup_filename: str, update_data: dict, db: Session = Depends(get_db)):
+    """Update the description of an existing backup"""
+    try:
+        from backup_system import BackupSystem
+        
+        new_description = update_data.get('description', '')
+        
+        backup_system = BackupSystem()
+        backup_system.update_backup_description(backup_filename, new_description)
+        
+        return {
+            "message": "Backup description updated successfully",
+            "filename": backup_filename,
+            "description": new_description
+        }
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error updating backup description: {str(e)}")
 
 @router.post("/backup/restore/{backup_filename:path}")
 def restore_backup(backup_filename: str, db: Session = Depends(get_db)):

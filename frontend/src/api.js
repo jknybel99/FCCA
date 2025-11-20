@@ -546,13 +546,22 @@ export default {
     return res.data;
   },
 
-  createBackup: async () => {
-    const res = await axiosInstance.post(`${BASE_URL}/api/admin/backup`);
+  createBackup: async (description = null) => {
+    const res = await axiosInstance.post(`${BASE_URL}/api/admin/backup`, {
+      description: description
+    });
     return res.data;
   },
 
   listBackups: async () => {
     const res = await axiosInstance.get(`${BASE_URL}/api/admin/backups`);
+    return res.data;
+  },
+
+  updateBackupDescription: async (backupFilename, description) => {
+    const res = await axiosInstance.put(`${BASE_URL}/api/admin/backup/${backupFilename}/description`, {
+      description: description
+    });
     return res.data;
   },
 

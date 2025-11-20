@@ -34,14 +34,16 @@ class BackupSystem:
         # Create backup directory if it doesn't exist
         os.makedirs(self.backup_dir, exist_ok=True)
         
-    def create_backup(self, include_audio=True, include_database=True, include_config=True):
-        """Create a comprehensive backup"""
+    def create_backup(self, include_audio=True, include_database=True, include_config=True, description=None):
+        """Create a comprehensive backup with optional description"""
         backup_name = f"backup_{self.timestamp}"
         backup_path = os.path.join(self.backup_dir, backup_name)
         
         try:
             os.makedirs(backup_path, exist_ok=True)
             logger.info(f"Creating backup: {backup_name}")
+            if description:
+                logger.info(f"Backup description: {description}")
             
             # Backup database
             if include_database:
@@ -55,8 +57,8 @@ class BackupSystem:
             if include_config:
                 self._backup_config(backup_path)
             
-            # Create backup manifest
-            self._create_manifest(backup_path, backup_name)
+            # Create backup manifest with description
+            self._create_manifest(backup_path, backup_name, description)
             
             # Create compressed archive
             archive_path = self._create_archive(backup_path, backup_name)
@@ -176,12 +178,13 @@ class BackupSystem:
         
         logger.info("Configuration backup completed")
     
-    def _create_manifest(self, backup_path, backup_name):
+    def _create_manifest(self, backup_path, backup_name, description=None):
         """Create a backup manifest with metadata"""
         manifest = {
             'backup_name': backup_name,
             'timestamp': self.timestamp,
             'created_at': datetime.now().isoformat(),
+            'description': description if description else '',
             'system_info': {
                 'python_version': os.sys.version,
                 'platform': os.name,
@@ -220,7 +223,7 @@ class BackupSystem:
         return hash_sha256.hexdigest()
     
     def list_backups(self):
-        """List all available backups"""
+        """List all available backups with descriptions"""
         if not os.path.exists(self.backup_dir):
             return []
         
@@ -231,17 +234,82 @@ class BackupSystem:
                 file_size = os.path.getsize(file_path)
                 file_time = datetime.fromtimestamp(os.path.getmtime(file_path))
                 
+                # Try to read description from manifest
+                description = ''
+                try:
+                    with zipfile.ZipFile(file_path, 'r') as zipf:
+                        if 'backup_manifest.json' in zipf.namelist():
+                            manifest_data = zipf.read('backup_manifest.json')
+                            manifest = json.loads(manifest_data)
+                            description = manifest.get('description', '')
+                except Exception as e:
+                    logger.warning(f"Could not read manifest from {file}: {e}")
+                
                 backups.append({
                     'filename': file,
                     'size': file_size,
                     'size_mb': round(file_size / (1024 * 1024), 2),
                     'created': file_time.isoformat(),
-                    'path': file_path
+                    'path': file_path,
+                    'description': description
                 })
         
         # Sort by creation time (newest first)
         backups.sort(key=lambda x: x['created'], reverse=True)
         return backups
+    
+    def update_backup_description(self, backup_filename, new_description):
+        """Update the description of an existing backup"""
+        backup_path = os.path.join(self.backup_dir, backup_filename)
+        
+        if not os.path.exists(backup_path):
+            raise FileNotFoundError(f"Backup file {backup_filename} not found")
+        
+        try:
+            # Create a temporary directory to extract and modify the backup
+            temp_dir = f"temp_backup_edit_{self.timestamp}"
+            os.makedirs(temp_dir, exist_ok=True)
+            
+            # Extract the backup
+            with zipfile.ZipFile(backup_path, 'r') as zipf:
+                zipf.extractall(temp_dir)
+            
+            # Update the manifest
+            manifest_path = os.path.join(temp_dir, 'backup_manifest.json')
+            if os.path.exists(manifest_path):
+                with open(manifest_path, 'r') as f:
+                    manifest = json.load(f)
+                
+                # Update description
+                manifest['description'] = new_description if new_description else ''
+                
+                # Write updated manifest
+                with open(manifest_path, 'w') as f:
+                    json.dump(manifest, f, indent=2)
+                
+                # Create new zip file (overwrite the old one)
+                with zipfile.ZipFile(backup_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                    for root, dirs, files in os.walk(temp_dir):
+                        for file in files:
+                            file_path = os.path.join(root, file)
+                            arcname = os.path.relpath(file_path, temp_dir)
+                            zipf.write(file_path, arcname)
+                
+                logger.info(f"Updated description for backup {backup_filename}")
+            else:
+                raise FileNotFoundError("Backup manifest not found in backup file")
+            
+            # Clean up temp directory
+            shutil.rmtree(temp_dir)
+            
+            return True
+            
+        except Exception as e:
+            # Clean up on error
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
+            logger.error(f"Error updating backup description: {e}")
+            raise
     
     def restore_backup(self, backup_filename):
         """Restore from a backup file"""

@@ -43,7 +43,9 @@ import {
   ViewList as ListViewIcon,
   MoreVert as MoreVertIcon,
   AccessTime as AccessTimeIcon,
-  Label as LabelIcon
+  Label as LabelIcon,
+  ArrowUpward as ArrowUpwardIcon,
+  ArrowDownward as ArrowDownwardIcon
 } from '@mui/icons-material';
 import AudioUpload from './AudioUpload';
 import AudioEditorV2 from './AudioEditorV2';
@@ -74,6 +76,9 @@ export default function AudioLibrary() {
   const [playingAudio, setPlayingAudio] = useState(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingFile, setEditingFile] = useState(null);
+  const [sortBy, setSortBy] = useState('created_at'); // 'name', 'created_at', or 'type'
+  const [sortOrder, setSortOrder] = useState('desc'); // 'asc' or 'desc'
+  const [selectedYear, setSelectedYear] = useState('all'); // 'all' or specific year
 
   useEffect(() => {
     loadAudioFiles();
@@ -81,7 +86,7 @@ export default function AudioLibrary() {
 
   useEffect(() => {
     filterFiles();
-  }, [audioFiles, selectedType, searchQuery]);
+  }, [audioFiles, selectedType, searchQuery, sortBy, sortOrder, selectedYear]);
 
   const loadAudioFiles = async () => {
     try {
@@ -109,6 +114,32 @@ export default function AudioLibrary() {
         (file.tags && file.tags.toLowerCase().includes(query))
       );
     }
+
+    // Filter by year
+    if (selectedYear !== 'all') {
+      filtered = filtered.filter(file => {
+        if (!file.created_at) return false;
+        const fileYear = new Date(file.created_at).getFullYear().toString();
+        return fileYear === selectedYear;
+      });
+    }
+
+    // Sort files
+    filtered.sort((a, b) => {
+      let compareValue = 0;
+      
+      if (sortBy === 'name') {
+        compareValue = a.name.localeCompare(b.name);
+      } else if (sortBy === 'created_at') {
+        const dateA = a.created_at ? new Date(a.created_at) : new Date(0);
+        const dateB = b.created_at ? new Date(b.created_at) : new Date(0);
+        compareValue = dateA - dateB;
+      } else if (sortBy === 'type') {
+        compareValue = a.type.localeCompare(b.type);
+      }
+      
+      return sortOrder === 'asc' ? compareValue : -compareValue;
+    });
 
     setFilteredFiles(filtered);
   };
@@ -222,6 +253,76 @@ export default function AudioLibrary() {
   };
 
   const stats = getStats();
+
+  const handleSort = (column) => {
+    if (sortBy === column) {
+      // Toggle sort order if clicking the same column
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      // Set new column and default to descending for dates, ascending for names/type
+      setSortBy(column);
+      setSortOrder(column === 'created_at' ? 'desc' : 'asc');
+    }
+  };
+
+  const getAvailableYears = () => {
+    const years = new Set();
+    audioFiles.forEach(file => {
+      if (file.created_at) {
+        const year = new Date(file.created_at).getFullYear();
+        years.add(year);
+      }
+    });
+    return Array.from(years).sort((a, b) => b - a); // Descending order
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    // If the timestamp doesn't have a 'Z' or timezone offset, assume it's UTC
+    let date;
+    if (!dateString.endsWith('Z') && !dateString.includes('+') && !dateString.includes('T')) {
+      // Just a date without time, treat as is
+      date = new Date(dateString);
+    } else if (!dateString.endsWith('Z') && !dateString.match(/[+-]\d{2}:\d{2}$/)) {
+      // Has time but no timezone indicator - assume UTC
+      date = new Date(dateString + 'Z');
+    } else {
+      // Already has timezone info
+      date = new Date(dateString);
+    }
+    
+    return date.toLocaleString('en-US', { 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+  };
+
+  const SortableHeader = ({ column, children }) => (
+    <Box 
+      onClick={() => handleSort(column)}
+      sx={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        gap: 0.5,
+        cursor: 'pointer',
+        userSelect: 'none',
+        '&:hover': {
+          opacity: 0.8
+        }
+      }}
+    >
+      {children}
+      {sortBy === column && (
+        sortOrder === 'asc' ? 
+          <ArrowUpwardIcon sx={{ fontSize: 14 }} /> : 
+          <ArrowDownwardIcon sx={{ fontSize: 14 }} />
+      )}
+    </Box>
+  );
 
   // Render audio card for grid view
   const renderAudioCard = (file) => (
@@ -533,7 +634,7 @@ export default function AudioLibrary() {
       </Box>
 
       {/* Filters and View Toggle */}
-      <Box sx={{ mb: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
+      <Box sx={{ mb: 2, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
         <TextField
           placeholder="Search..."
           value={searchQuery}
@@ -559,6 +660,21 @@ export default function AudioLibrary() {
             {SOUND_TYPES.map((type) => (
               <MenuItem key={type.value} value={type.value}>
                 {type.label}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        <FormControl size="small" sx={{ minWidth: 120 }}>
+          <InputLabel>Year</InputLabel>
+          <Select
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(e.target.value)}
+            label="Year"
+          >
+            <MenuItem value="all">All Years</MenuItem>
+            {getAvailableYears().map((year) => (
+              <MenuItem key={year} value={year.toString()}>
+                {year}
               </MenuItem>
             ))}
           </Select>
@@ -602,7 +718,7 @@ export default function AudioLibrary() {
         <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, overflow: 'hidden' }}>
           <Box sx={{ 
             display: 'grid', 
-            gridTemplateColumns: '100px 1fr 120px 80px 80px 200px',
+            gridTemplateColumns: '100px 1fr 120px 180px 80px 200px',
             gap: 1,
             p: 1,
             bgcolor: 'primary.main',
@@ -612,10 +728,10 @@ export default function AudioLibrary() {
             fontWeight: 600,
             fontSize: '0.75rem'
           }}>
-            <Box>TYPE</Box>
-            <Box>NAME</Box>
+            <SortableHeader column="type">TYPE</SortableHeader>
+            <SortableHeader column="name">NAME</SortableHeader>
             <Box>DURATION</Box>
-            <Box>SAMPLE RATE</Box>
+            <SortableHeader column="created_at">UPLOADED</SortableHeader>
             <Box>PLAY</Box>
             <Box>ACTIONS</Box>
           </Box>
@@ -624,7 +740,7 @@ export default function AudioLibrary() {
               key={file.id}
               sx={{
                 display: 'grid',
-                gridTemplateColumns: '100px 1fr 120px 80px 80px 200px',
+                gridTemplateColumns: '100px 1fr 120px 180px 80px 200px',
                 gap: 1,
                 p: 1,
                 alignItems: 'center',
@@ -668,8 +784,8 @@ export default function AudioLibrary() {
               <Typography variant="body2" color="text.secondary">
                 {file.duration ? `${Math.floor(file.duration / 60)}:${(file.duration % 60).toString().padStart(2, '0')}` : '-'}
               </Typography>
-              <Typography variant="body2" color="text.secondary">
-                44.1kHz
+              <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                {formatDate(file.created_at)}
               </Typography>
               <IconButton
                 size="small"

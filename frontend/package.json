@@ -1,6 +1,6 @@
 {
   "name": "school-bell-system",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "proxy": "http://10.7.45.193:8000",
   "dependencies": {
